@@ -31,7 +31,7 @@ export default defineNuxtConfig({
   },
 
   // SEO
-  site: { url: 'https://i18n.nuxtjs.org' },
+  site: { url: 'https://nuxt-i18n.zhcndoc.com' },
 
   nitro: {
     prerender: {
@@ -40,6 +40,7 @@ export default defineNuxtConfig({
   },
 
   // Nuxt UI & UI Pro
+  // @ts-ignore
   ui: { icons: ['heroicons', 'simple-icons'] },
 
   // special license for nuxt & nuxt-modules orgs

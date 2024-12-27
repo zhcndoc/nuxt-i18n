@@ -31,7 +31,7 @@ const links = computed(() =>
   [
     toc?.bottom?.edit && {
       icon: 'i-heroicons-pencil-square',
-      label: 'Edit this page',
+      label: '编辑此页面',
       to: `${toc.bottom.edit}/${page?.value?._file}`,
       target: '_blank'
     }

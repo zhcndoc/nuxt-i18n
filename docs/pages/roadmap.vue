@@ -1,7 +1,7 @@
 <script setup>
 // Page Metadata (SEO & OG)
 const { setPageMeta } = usePageMeta()
-setPageMeta({ title: 'Roadmap', description: 'Discover our Volta board for @nuxt/i18n development status.' })
+setPageMeta({ title: '路线图', description: '发现我们的 Volta 板以获取 @nuxt/i18n 开发状态。' })
 
 // Volta board
 const VOLTA_TOKEN =

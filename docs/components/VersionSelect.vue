@@ -5,7 +5,7 @@ const versions = computed(() => {
       id: '9',
       label: 'v9',
       to: '/docs/getting-started',
-      tag: 'latest',
+      tag: '最新',
       click: () => {}
     },
     {
@@ -18,7 +18,7 @@ const versions = computed(() => {
       id: '7',
       label: 'v7',
       to: '/docs/v7',
-      tag: 'legacy',
+      tag: '旧版',
       click: () => {}
     }
   ]

@@ -30,7 +30,7 @@ export default defineAppConfig({
       }
     }
   },
-  seo: { siteName: '@nuxtjs/i18n' },
+  seo: { siteName: 'Nuxt I18n 中文文档' },
   header: {
     search: true,
     colorMode: true,
@@ -39,7 +39,7 @@ export default defineAppConfig({
         icon: 'i-simple-icons-github',
         to: 'https://github.com/nuxt-modules/i18n',
         target: '_blank',
-        'aria-label': 'Nuxt i18n module'
+        'aria-label': 'Nuxt I18n 模块'
       }
     ]
   },
@@ -49,9 +49,9 @@ export default defineAppConfig({
     links: [
       {
         icon: 'i-simple-icons-nuxtdotjs',
-        to: 'https://nuxt.com',
+        to: 'https://nuxt.zhcndoc.com',
         target: '_blank',
-        'aria-label': 'Nuxt Website'
+        'aria-label': 'Nuxt 中文文档'
       },
       {
         icon: 'i-simple-icons-github',
@@ -62,9 +62,9 @@ export default defineAppConfig({
     ]
   },
   toc: {
-    title: 'Table of Contents',
+    title: '目录',
     bottom: {
-      edit: 'https://github.com/nuxt-modules/i18n/edit/main/docs/content'
+      edit: 'https://github.com/zhcndoc/nuxt-i18n/edit/main/docs/content'
     }
   }
 })

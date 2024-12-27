@@ -1,15 +1,15 @@
-title: 'Internationalization for Nuxt Applications · @nuxtjs/i18n'
-description: 'I18n (Internationalization) module for your Nuxt project powered by Vue I18n.'
+title: 'Nuxt 应用程序的国际化 - @nuxtjs/i18n'
+description: '为您的 Nuxt 项目提供的 I18n（国际化）模块，基于 Vue I18n。'
 navigation: false
 hero:
-  description: 'I18n (Internationalization) module for your Nuxt project powered by Vue I18n.'
+  description: '为您的 Nuxt 项目提供的 I18n（国际化）模块，由 Vue I18n 驱动。'
   orientation: horizontal
   links:
-    - label: Get Started
+    - label: 开始使用
       trailingIcon: 'i-heroicons-arrow-right-20-solid'
       to: '/docs/getting-started'
       size: lg
-    - label: Star on GitHub
+    - label: GitHub 星标
       icon: i-simple-icons-github
       size: lg
       variant: ghost
@@ -22,40 +22,40 @@ hero:
     ```
 
 features:
-  title: 'Build i18n-ready apps in seconds!'
+  title: '在几秒钟内构建支持国际化的应用程序！'
 
   items:
-    - title: 'Vue I18n Integration'
-      description: 'Powered by Nuxt 3 for optimal performances and SEO.'
+    - title: 'Vue I18n 集成'
+      description: '由 Nuxt 3 提供支持，以实现最佳性能和 SEO。'
       icon: 'i-simple-icons-i18next'
 
-    - title: 'Automatic Routes Generation'
-      description: 'Auto override of Nuxt default routes to add your locales prefixes to every URL.'
+    - title: '自动生成路由'
+      description: '自动覆盖 Nuxt 默认路由，为每个 URL 添加您的语言前缀。'
       icon: 'i-heroicons-sparkles-20-solid'
       to: '/docs/guide'
 
-    - title: 'Search Engine Optimization'
-      description: 'Composables to add SEO metadata based on current locale.'
+    - title: '搜索引擎优化'
+      description: '根据当前区域添加 SEO 元数据的可组合组件。'
       icon: 'i-heroicons-presentation-chart-line'
       to: '/docs/guide/seo'
 
-    - title: 'Messages Lazy-Loading'
-      description: 'Lazy-load only the language that the users selected instead of bundling all the messages.'
+    - title: '消息延迟加载'
+      description: '仅延迟加载用户选择的语言，而不是捆绑所有消息。'
       icon: 'i-heroicons-rocket-launch'
       to: '/docs/guide/lazy-load-translations'
 
-    - title: 'Locale-Aware Redirection'
-      description: 'Ready to use composables to redirect based on current locale.'
+    - title: '本地化重定向'
+      description: '准备使用可组合组件根据当前区域设置进行重定向。'
       icon: 'i-heroicons-arrows-right-left'
       to: '/docs/components/nuxt-link-locale'
 
-    - title: 'Locales Specific Domains'
-      description: 'Set a different domain name for each locale your app supports.'
+    - title: '区域特定域名'
+      description: '为您应用支持的每个区域设置一个不同的域名。'
       icon: 'i-heroicons-globe-alt'
       to: '/docs/guide/different-domains'
 
   links:
-    - label: Get Started
+    - label: 开始使用
       trailingIcon: 'i-heroicons-arrow-right-20-solid'
       to: '/docs/getting-started'
       size: lg

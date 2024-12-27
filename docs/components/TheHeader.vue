@@ -17,11 +17,11 @@ const navigation = inject<NavItem[]>('navigation', [])
     </template>
 
     <template #right>
-      <UTooltip text="Search" :shortcuts="[metaSymbol, 'K']">
+      <UTooltip text="搜索" :shortcuts="[metaSymbol, 'K']">
         <UContentSearchButton :label="null" />
       </UTooltip>
 
-      <UTooltip text="Toggle Theme">
+      <UTooltip text="切换主题">
         <UColorModeButton v-if="header?.colorMode" />
       </UTooltip>
 

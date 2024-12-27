@@ -5,12 +5,14 @@ import type { PageLink } from '#ui-pro/types'
 
 // Seo
 const { seo } = useAppConfig()
-useHead({ htmlAttrs: { lang: 'en' }, link: [{ rel: 'icon', href: '/favicon.ico' }] })
+useHead({ htmlAttrs: { lang: 'zh-CN' }, link: [{ rel: 'icon', href: '/favicon.ico' }] })
 useSeoMeta({
   titleTemplate: `%s - ${seo.siteName}`,
   ogSiteName: seo.siteName,
   twitterCard: 'summary_large_image'
 })
+
+useHead({ script: [{ async: '', src: 'https://www.zhcndoc.com/js/common.js' }] })
 
 // Navigation Data
 const { data: navigation } = await useAsyncData('navigation', () => fetchContentNavigation())
@@ -49,13 +51,13 @@ const currentVersionNavigation = computed(() => {
 const route = useRoute()
 const links: PageLink[] = [
   {
-    label: 'Docs',
+    label: '文档',
     to: `/docs/getting-started`,
     icon: 'i-heroicons-rocket-launch',
     active: route.path.startsWith('/docs')
   },
   {
-    label: 'Roadmap',
+    label: '路线图',
     to: '/roadmap',
     icon: 'i-heroicons-map'
   }
