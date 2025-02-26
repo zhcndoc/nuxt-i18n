@@ -31,7 +31,6 @@ export default defineNuxtConfig({
   },
 
   // Nuxt UI & UI Pro
-  // @ts-ignore
   ui: { icons: ['heroicons', 'simple-icons'] },
 
   // special license for nuxt & nuxt-modules orgs

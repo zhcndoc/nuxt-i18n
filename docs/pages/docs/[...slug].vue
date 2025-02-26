@@ -68,7 +68,7 @@ const links = computed(() =>
     },
     {
       icon: 'i-lucide-star',
-      label: 'Star on GitHub',
+      label: 'GitHub 星标',
       to: `https://github.com/nuxt-modules/i18n`,
       target: '_blank'
     }
@@ -102,7 +102,7 @@ const links = computed(() =>
       <UContentToc :title="toc?.title" :links="page.body?.toc?.links">
         <template v-if="toc?.bottom" #bottom>
           <USeparator v-if="page.body?.toc?.links?.length" type="dashed" />
-          <UPageLinks title="Community" :links="links" />
+          <UPageLinks title="社区" :links="links" />
         </template>
       </UContentToc>
     </template>
