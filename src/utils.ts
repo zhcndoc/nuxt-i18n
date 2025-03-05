@@ -1,17 +1,16 @@
-import { promises as fs, readFileSync as _readFileSync, constants as FS_CONSTANTS } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { createHash, type BinaryLike } from 'node:crypto'
 import { resolvePath, useNuxt } from '@nuxt/kit'
 import { parse as parsePath, resolve, relative, join } from 'pathe'
-import { parse as _parseCode } from '@babel/parser'
 import { defu } from 'defu'
 import { genSafeVariableName } from 'knitwork'
-import { transform as stripType } from 'sucrase'
 import { isString, isArray } from '@intlify/shared'
-import { NUXT_I18N_MODULE_ID, TS_EXTENSIONS, EXECUTABLE_EXTENSIONS, NULL_HASH } from './constants'
+import { NUXT_I18N_MODULE_ID, EXECUTABLE_EXTENSIONS, NULL_HASH } from './constants'
+import { parseSync } from './utils/parse'
 
 import type { NuxtI18nOptions, LocaleInfo, VueI18nConfigPathInfo, LocaleType, LocaleFile, LocaleObject } from './types'
 import type { Nuxt, NuxtConfigLayer } from '@nuxt/schema'
-import type { File, Identifier } from '@babel/types'
+import type { IdentifierName, Program } from 'oxc-parser'
 
 export function formatMessage(message: string) {
   return `[${NUXT_I18N_MODULE_ID}]: ${message}`
@@ -87,7 +86,6 @@ export async function resolveLocales(srcDir: string, locales: LocaleObject[], bu
         loadPath: relative(buildDir, filePath),
         type: localeType,
         hash: getHash(filePath),
-        parsed,
         key,
         file: {
           path: f.path,
@@ -108,8 +106,7 @@ export async function resolveLocales(srcDir: string, locales: LocaleObject[], bu
 function getLocaleType(path: string): LocaleType {
   const ext = parsePath(path).ext
   if (EXECUTABLE_EXTENSIONS.includes(ext)) {
-    const code = readCode(path, ext)
-    const parsed = parseCode(code, path)
+    const parsed = parseSync(path, readFileSync(path, 'utf-8'))
     const analyzed = scanProgram(parsed.program)
     if (analyzed === 'object') {
       return 'static'
@@ -123,25 +120,9 @@ function getLocaleType(path: string): LocaleType {
   }
 }
 
-const PARSE_CODE_CACHES = new Map<string, ReturnType<typeof _parseCode>>()
-
-function parseCode(code: string, path: string) {
-  if (PARSE_CODE_CACHES.has(path)) {
-    return PARSE_CODE_CACHES.get(path)!
-  }
-
-  const parsed = _parseCode(code, {
-    allowImportExportEverywhere: true,
-    sourceType: 'module'
-  })
-
-  PARSE_CODE_CACHES.set(path, parsed)
-  return parsed
-}
-
-function scanProgram(program: File['program'] /*, calleeName: string*/) {
+function scanProgram(program: Program) {
   let ret: false | 'object' | 'function' | 'arrow-function' = false
-  let variableDeclaration: Identifier | undefined
+  let variableDeclaration: IdentifierName | undefined
 
   for (const node of program.body) {
     if (node.type !== 'ExportDefaultDeclaration') continue
@@ -202,42 +183,9 @@ function scanProgram(program: File['program'] /*, calleeName: string*/) {
   return ret
 }
 
-export function readCode(absolutePath: string, ext: string) {
-  let code = readFileSync(absolutePath)
-  if (TS_EXTENSIONS.includes(ext)) {
-    const out = stripType(code, {
-      transforms: ['typescript', 'jsx'],
-      keepUnusedImports: true
-    })
-    code = out.code
-  }
-  return code
-}
-
 export function getLayerRootDirs(nuxt: Nuxt) {
   const layers = nuxt.options._layers
   return layers.length > 1 ? layers.map(layer => layer.config.rootDir) : []
-}
-
-export async function writeFile(path: string, data: string) {
-  await fs.writeFile(path, data, { encoding: 'utf-8' })
-}
-
-export async function readFile(path: string) {
-  return await fs.readFile(path, { encoding: 'utf-8' })
-}
-
-export function readFileSync(path: string) {
-  return _readFileSync(path, { encoding: 'utf-8' })
-}
-
-export async function isExists(path: string) {
-  try {
-    await fs.access(path, FS_CONSTANTS.F_OK)
-    return true
-  } catch (_e) {
-    return false
-  }
 }
 
 export async function resolveVueI18nConfigInfo(
@@ -257,15 +205,13 @@ export async function resolveVueI18nConfigInfo(
       loadPath: '',
       type: 'unknown',
       hash: NULL_HASH,
-      key: '',
-      parsed: { base: '', dir: '', ext: '', name: '', root: '' }
+      key: ''
     }
   }
 
   const absolutePath = await resolvePath(configPathInfo.relative, { cwd: rootDir, extensions: EXECUTABLE_EXTENSIONS })
-  if (!(await isExists(absolutePath))) return undefined
+  if (!existsSync(absolutePath)) return undefined
 
-  const parsed = parsePath(absolutePath)
   const loadPath = join(configPathInfo.relativeBase, relative(rootDir, absolutePath))
 
   configPathInfo.absolute = absolutePath
@@ -279,7 +225,6 @@ export async function resolveVueI18nConfigInfo(
     type: configPathInfo.type,
     hash: configPathInfo.hash,
     loadPath,
-    parsed,
     key
   }
 

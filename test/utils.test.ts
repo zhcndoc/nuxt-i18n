@@ -1,7 +1,8 @@
 import { resolveLocales } from '../src/utils'
 import { parseSegment, getRoutePath } from '../src/utils/route-parsing'
 import type { LocaleObject } from '../src/types'
-import { vi, beforeEach, afterEach, test, expect } from 'vitest'
+import { vi, beforeEach, afterEach, test, expect, beforeAll } from 'vitest'
+import { initParser } from '../src/utils/parse'
 
 vi.mock('pathe', async () => {
   const mod = await vi.importActual<typeof import('pathe')>('pathe')
@@ -22,6 +23,10 @@ vi.mock('@nuxt/kit', () => {
 })
 
 vi.mock('node:fs')
+
+beforeAll(async () => {
+  await initParser()
+})
 
 beforeEach(async () => {
   vi.spyOn(await import('node:fs'), 'readFileSync').mockReturnValue(
@@ -76,13 +81,6 @@ test('resolveLocales', async () => {
             "hash": "5c407b7f",
             "key": "locale__path_to_project_en_json",
             "loadPath": "../en.json",
-            "parsed": {
-              "base": "en.json",
-              "dir": "/path/to/project",
-              "ext": ".json",
-              "name": "en",
-              "root": "/",
-            },
             "path": "/path/to/project/en.json",
             "type": "static",
           },
@@ -105,13 +103,6 @@ test('resolveLocales', async () => {
             "hash": "0e1b8bd4",
             "key": "locale__path_to_project_ja_json",
             "loadPath": "../ja.json",
-            "parsed": {
-              "base": "ja.json",
-              "dir": "/path/to/project",
-              "ext": ".json",
-              "name": "ja",
-              "root": "/",
-            },
             "path": "/path/to/project/ja.json",
             "type": "static",
           },
@@ -134,13 +125,6 @@ test('resolveLocales', async () => {
             "hash": "c78280fb",
             "key": "locale__path_to_project_es_json",
             "loadPath": "../es.json",
-            "parsed": {
-              "base": "es.json",
-              "dir": "/path/to/project",
-              "ext": ".json",
-              "name": "es",
-              "root": "/",
-            },
             "path": "/path/to/project/es.json",
             "type": "static",
           },
@@ -167,13 +151,6 @@ test('resolveLocales', async () => {
             "hash": "c78280fb",
             "key": "locale__path_to_project_es_json",
             "loadPath": "../es.json",
-            "parsed": {
-              "base": "es.json",
-              "dir": "/path/to/project",
-              "ext": ".json",
-              "name": "es",
-              "root": "/",
-            },
             "path": "/path/to/project/es.json",
             "type": "static",
           },
@@ -185,13 +162,6 @@ test('resolveLocales', async () => {
             "hash": "65220c0a",
             "key": "locale__path_to_project_es_AR_json",
             "loadPath": "../es-AR.json",
-            "parsed": {
-              "base": "es-AR.json",
-              "dir": "/path/to/project",
-              "ext": ".json",
-              "name": "es-AR",
-              "root": "/",
-            },
             "path": "/path/to/project/es-AR.json",
             "type": "static",
           },
@@ -214,13 +184,6 @@ test('resolveLocales', async () => {
             "hash": "b7971e5b",
             "key": "locale__path_to_project_nl_js",
             "loadPath": "../nl.js",
-            "parsed": {
-              "base": "nl.js",
-              "dir": "/path/to/project",
-              "ext": ".js",
-              "name": "nl",
-              "root": "/",
-            },
             "path": "/path/to/project/nl.js",
             "type": "dynamic",
           },
