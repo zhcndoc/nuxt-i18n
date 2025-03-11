@@ -1,5 +1,5 @@
 import { deepCopy, isFunction } from '@intlify/shared'
-import { createLogger } from 'virtual:nuxt-i18n-logger'
+import { createLogger } from '#nuxt-i18n/logger'
 
 import type { I18nOptions, Locale, FallbackLocale, LocaleMessages, DefineLocaleMessage } from 'vue-i18n'
 import type { NuxtApp } from '#app'
@@ -129,7 +129,7 @@ export async function loadLocale(
       __DEBUG__ && logger.log(loader.key + ' is already loaded')
       message = cacheMessages.get(loader.key)
     } else {
-      __DEBUG__ && !loader.cache && logger.log(loader.key + ' bypassing cache!')
+      __TEST__ && !loader.cache && logger.log(loader.key + ' bypassing cache!')
       __DEBUG__ && logger.log(loader.key + ' is loading ...')
       message = await nuxt.runWithContext(() => loadMessage(locale, loader, nuxt))
     }
