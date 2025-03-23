@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":prHourlyLimit4", ":semanticCommitTypeAll(chore)"],
-  "baseBranches": ["$default", "v7"],
+  "baseBranches": ["$default"],
   "meteor": {
     "enabled": false
   },
@@ -10,6 +10,10 @@
     "commitMessageTopic": "{{prettyDepType}} {{depName}}"
   },
   "packageRules": [
+    {
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
     {
       "matchPackageNames": ["node"],
       "enabled": false
