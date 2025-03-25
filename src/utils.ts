@@ -1,23 +1,22 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { createHash, type BinaryLike } from 'node:crypto'
 import { resolvePath, useNuxt } from '@nuxt/kit'
-import { parse as parsePath, resolve, relative, join } from 'pathe'
+import { resolve, relative, join } from 'pathe'
 import { defu } from 'defu'
-import { genSafeVariableName } from 'knitwork'
 import { isString, isArray } from '@intlify/shared'
-import { NUXT_I18N_MODULE_ID, EXECUTABLE_EXTENSIONS, NULL_HASH } from './constants'
+import { NUXT_I18N_MODULE_ID, EXECUTABLE_EXTENSIONS, EXECUTABLE_EXT_RE } from './constants'
 import { parseSync } from './utils/parse'
 
-import type { NuxtI18nOptions, LocaleInfo, VueI18nConfigPathInfo, LocaleType, LocaleFile, LocaleObject } from './types'
+import type { NuxtI18nOptions, LocaleInfo, LocaleType, LocaleFile, LocaleObject } from './types'
 import type { Nuxt, NuxtConfigLayer } from '@nuxt/schema'
-import type { IdentifierName, Program } from 'oxc-parser'
+import type { IdentifierName, Program, VariableDeclarator } from 'oxc-parser'
 
 export function formatMessage(message: string) {
   return `[${NUXT_I18N_MODULE_ID}]: ${message}`
 }
 
-export function normalizeIncludingLocales(locales?: string | string[]) {
-  return (toArray(locales) ?? []).filter(isString)
+function normalizeIncludingLocales(locales?: string | string[]) {
+  return toArray(locales ?? []).filter(isString)
 }
 
 export function filterLocales(options: Required<NuxtI18nOptions>, nuxt: Nuxt) {
@@ -35,9 +34,8 @@ export function filterLocales(options: Required<NuxtI18nOptions>, nuxt: Nuxt) {
 }
 
 export function getNormalizedLocales(locales: NuxtI18nOptions['locales']): LocaleObject[] {
-  locales = locales || []
   const normalized: LocaleObject[] = []
-  for (const locale of locales) {
+  for (const locale of locales ?? []) {
     if (isString(locale)) {
       normalized.push({ code: locale, language: locale })
     } else {
@@ -47,54 +45,28 @@ export function getNormalizedLocales(locales: NuxtI18nOptions['locales']): Local
   return normalized
 }
 
-const IMPORT_ID_CACHES = new Map<string, string>()
-
-export const normalizeWithUnderScore = (name: string) => name.replace(/-/g, '_').replace(/\./g, '_').replace(/\//g, '_')
-
-function convertToImportId(file: string) {
-  if (IMPORT_ID_CACHES.has(file)) {
-    return IMPORT_ID_CACHES.get(file)
-  }
-
-  const { dir, base } = parsePath(file)
-  const id = normalizeWithUnderScore(`${dir}/${base}`)
-  IMPORT_ID_CACHES.set(file, id)
-
-  return id
-}
-
-export async function resolveLocales(srcDir: string, locales: LocaleObject[], buildDir: string): Promise<LocaleInfo[]> {
-  const files = await Promise.all(locales.flatMap(x => getLocalePaths(x)).map(x => resolve(srcDir, x)))
-  const find = (f: string) => files.find(file => file === resolve(srcDir, f))
-
+export function resolveLocales(srcDir: string, locales: LocaleObject[], buildDir: string): LocaleInfo[] {
   const localesResolved: LocaleInfo[] = []
-
-  for (const { file, ...locale } of locales) {
-    const resolved: LocaleInfo = { ...locale, files: [], meta: [] }
+  for (const locale of locales) {
+    const resolved: LocaleInfo = Object.assign({ meta: [] }, locale)
+    delete resolved.file
+    delete resolved.files
 
     const files = getLocaleFiles(locale)
     for (const f of files) {
-      const filePath = find(f.path) ?? ''
+      const filePath = resolve(srcDir, f.path)
       const localeType = getLocaleType(filePath)
-      const isCached = filePath ? localeType !== 'dynamic' : true
-      const parsed = parsePath(filePath)
-      const importKey = join(parsed.root, parsed.dir, parsed.base)
-      const key = genSafeVariableName(`locale_${convertToImportId(importKey)}`)
 
-      const metaFile = {
+      resolved.meta.push({
         path: filePath,
         loadPath: relative(buildDir, filePath),
         type: localeType,
         hash: getHash(filePath),
-        key,
         file: {
           path: f.path,
-          cache: f.cache ?? isCached
+          cache: f.cache ?? localeType !== 'dynamic'
         }
-      }
-
-      resolved.meta!.push(metaFile)
-      resolved.files.push(metaFile.file)
+      })
     }
 
     localesResolved.push(resolved)
@@ -104,88 +76,72 @@ export async function resolveLocales(srcDir: string, locales: LocaleObject[], bu
 }
 
 function getLocaleType(path: string): LocaleType {
-  const ext = parsePath(path).ext
-  if (EXECUTABLE_EXTENSIONS.includes(ext)) {
-    const parsed = parseSync(path, readFileSync(path, 'utf-8'))
-    const analyzed = scanProgram(parsed.program)
-    if (analyzed === 'object') {
-      return 'static'
-    } else if (analyzed === 'function' || analyzed === 'arrow-function') {
-      return 'dynamic'
-    } else {
-      return 'unknown'
-    }
-  } else {
+  if (!EXECUTABLE_EXT_RE.test(path)) {
     return 'static'
   }
+
+  const parsed = parseSync(path, readFileSync(path, 'utf-8'))
+  const analyzed = scanProgram(parsed.program)
+  // prettier-ignore
+  return analyzed === 'object'
+    ? 'static'
+    : analyzed === 'function'
+      ? 'dynamic'
+      : 'unknown'
 }
 
 function scanProgram(program: Program) {
-  let ret: false | 'object' | 'function' | 'arrow-function' = false
-  let variableDeclaration: IdentifierName | undefined
+  let varDeclarationName: IdentifierName | undefined
+  const varDeclarations: VariableDeclarator[] = []
 
   for (const node of program.body) {
-    if (node.type !== 'ExportDefaultDeclaration') continue
-
-    if (node.declaration.type === 'ObjectExpression') {
-      ret = 'object'
-      break
-    }
-
-    if (node.declaration.type === 'Identifier') {
-      variableDeclaration = node.declaration
-      break
-    }
-
-    if (node.declaration.type === 'CallExpression' && node.declaration.callee.type === 'Identifier') {
-      const [fnNode] = node.declaration.arguments
-      if (fnNode.type === 'FunctionExpression') {
-        ret = 'function'
+    switch (node.type) {
+      // collect variable declarations
+      case 'VariableDeclaration':
+        for (const decl of node.declarations) {
+          if (decl.type !== 'VariableDeclarator' || decl.init == null) continue
+          if ('name' in decl.id === false) continue
+          varDeclarations.push(decl)
+        }
         break
-      }
-
-      if (fnNode.type === 'ArrowFunctionExpression') {
-        ret = 'arrow-function'
-        break
-      }
-    }
-  }
-
-  if (variableDeclaration) {
-    for (const node of program.body) {
-      if (node.type !== 'VariableDeclaration') continue
-      for (const decl of node.declarations) {
-        if (decl.type !== 'VariableDeclarator') continue
-        if (decl.init == null) continue
-        if ('name' in decl.id === false || decl.id.name !== variableDeclaration.name) continue
-
-        if (decl.init.type === 'ObjectExpression') {
-          ret = 'object'
+      // check default export - store identifier if exporting variable name
+      case 'ExportDefaultDeclaration':
+        if (node.declaration.type === 'Identifier') {
+          varDeclarationName = node.declaration
           break
         }
 
-        if (decl.init.type === 'CallExpression' && decl.init.callee.type === 'Identifier') {
-          const [fnNode] = decl.init.arguments
-          if (fnNode.type === 'FunctionExpression') {
-            ret = 'function'
-            break
-          }
+        if (node.declaration.type === 'ObjectExpression') {
+          return 'object'
+        }
 
-          if (fnNode.type === 'ArrowFunctionExpression') {
-            ret = 'arrow-function'
-            break
+        if (node.declaration.type === 'CallExpression' && node.declaration.callee.type === 'Identifier') {
+          const [fnNode] = node.declaration.arguments
+          if (fnNode.type === 'FunctionExpression' || fnNode.type === 'ArrowFunctionExpression') {
+            return 'function'
           }
+        }
+        break
+    }
+  }
+
+  if (varDeclarationName) {
+    const n = varDeclarations.find(x => x.id.type === 'Identifier' && x.id.name === varDeclarationName.name)
+    if (n) {
+      if (n.init?.type === 'ObjectExpression') {
+        return 'object'
+      }
+
+      if (n.init?.type === 'CallExpression' && n.init.callee.type === 'Identifier') {
+        const [fnNode] = n.init.arguments
+        if (fnNode.type === 'FunctionExpression' || fnNode.type === 'ArrowFunctionExpression') {
+          return 'function'
         }
       }
     }
   }
 
-  return ret
-}
-
-export function getLayerRootDirs(nuxt: Nuxt) {
-  const layers = nuxt.options._layers
-  return layers.length > 1 ? layers.map(layer => layer.config.rootDir) : []
+  return false
 }
 
 export async function resolveVueI18nConfigInfo(
@@ -193,60 +149,32 @@ export async function resolveVueI18nConfigInfo(
   configPath: string = 'i18n.config',
   buildDir = useNuxt().options.buildDir
 ) {
-  const configPathInfo: Required<VueI18nConfigPathInfo> = {
-    relativeBase: relative(buildDir, rootDir),
-    relative: configPath,
-    absolute: '',
-    rootDir,
-    hash: NULL_HASH,
-    type: 'unknown',
-    meta: {
-      path: '',
-      loadPath: '',
-      type: 'unknown',
-      hash: NULL_HASH,
-      key: ''
-    }
-  }
-
-  const absolutePath = await resolvePath(configPathInfo.relative, { cwd: rootDir, extensions: EXECUTABLE_EXTENSIONS })
+  const absolutePath = await resolvePath(configPath, { cwd: rootDir, extensions: EXECUTABLE_EXTENSIONS })
   if (!existsSync(absolutePath)) return undefined
 
-  const loadPath = join(configPathInfo.relativeBase, relative(rootDir, absolutePath))
-
-  configPathInfo.absolute = absolutePath
-  configPathInfo.type = getLocaleType(absolutePath)
-  configPathInfo.hash = getHash(loadPath)
-
-  const key = `${normalizeWithUnderScore(configPathInfo.relative)}_${configPathInfo.hash}`
-
-  configPathInfo.meta = {
-    path: absolutePath,
-    type: configPathInfo.type,
-    hash: configPathInfo.hash,
-    loadPath,
-    key
+  const relativeBase = relative(buildDir, rootDir)
+  return {
+    rootDir,
+    meta: {
+      loadPath: join(relativeBase, relative(rootDir, absolutePath)), // relative
+      path: absolutePath, // absolute
+      hash: getHash(absolutePath),
+      type: getLocaleType(absolutePath)
+    }
   }
-
-  return configPathInfo
-}
-
-export type PrerenderTarget = {
-  type: 'locale' | 'config'
-  path: string
 }
 
 export const getLocalePaths = (locale: LocaleObject): string[] => {
   return getLocaleFiles(locale).map(x => x.path)
 }
 
-export const getLocaleFiles = (locale: LocaleObject | LocaleInfo): LocaleFile[] => {
+export const getLocaleFiles = (locale: LocaleObject): LocaleFile[] => {
   if (locale.file != null) {
-    return [locale.file].map(x => (isString(x) ? { path: x, cache: undefined } : (x as LocaleFile)))
+    return [locale.file].map(x => (isString(x) ? { path: x, cache: undefined } : x))
   }
 
   if (locale.files != null) {
-    return [...locale.files].map(x => (isString(x) ? { path: x, cache: undefined } : x))
+    return locale.files.map(x => (isString(x) ? { path: x, cache: undefined } : x))
   }
 
   return []
@@ -343,7 +271,7 @@ export const mergeI18nModules = async (options: NuxtI18nOptions, nuxt: Nuxt) => 
   }
 }
 
-export function getHash(text: BinaryLike): string {
+function getHash(text: BinaryLike): string {
   return createHash('sha256').update(text).digest('hex').substring(0, 8)
 }
 

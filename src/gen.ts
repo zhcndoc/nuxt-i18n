@@ -2,20 +2,13 @@ import createDebug from 'debug'
 import { genImport, genDynamicImport, genSafeVariableName, genString } from 'knitwork'
 import { resolve, relative, join, basename } from 'pathe'
 import { distDir, runtimeDir } from './dirs'
-import { getHash, getLayerI18n, getLocalePaths, getNormalizedLocales } from './utils'
+import { getLayerI18n, getLocalePaths } from './utils'
 import { asI18nVirtual } from './transform/utils'
 
 import type { Nuxt } from '@nuxt/schema'
-import type { NuxtI18nOptions, LocaleInfo, VueI18nConfigPathInfo, LocaleObject, LocaleFile } from './types'
+import type { NuxtI18nOptions, LocaleInfo, LocaleObject, LocaleFile } from './types'
 import type { Locale } from 'vue-i18n'
 import type { I18nNuxtContext } from './context'
-
-export type LoaderOptions = {
-  vueI18nConfigPaths: Required<VueI18nConfigPathInfo>[]
-  localeInfo: LocaleInfo[]
-  nuxtI18nOptions: NuxtI18nOptions
-  normalizedLocales: LocaleObject<string>[]
-}
 
 const debug = createDebug('@nuxtjs/i18n:gen')
 
@@ -69,14 +62,13 @@ export function generateLoaderOptions(
 
   const importMapper = new Map<string, LocaleLoaderData>()
   function generateLocaleImports(meta: NonNullable<LocaleInfo['meta']>[number]) {
-    if (importMapper.has(meta.key)) return importMapper.get(meta.key)!
-    const hash = getHash(meta.path)
-    const key = `locale_${genSafeVariableName(basename(meta.path))}_${hash}`
-    const specifier = asI18nVirtual(hash)
+    if (importMapper.has(meta.path)) return importMapper.get(meta.path)!
+    const key = `locale_${genSafeVariableName(basename(meta.path))}_${meta.hash}`
+    const specifier = asI18nVirtual(meta.hash)
     const async = genDynamicImport(specifier, { comment: `webpackChunkName: ${genString(key)}` })
     const sync = `() => Promise.resolve(${key})`
 
-    importMapper.set(meta.key, {
+    importMapper.set(meta.path, {
       specifier,
       key: genString(key),
       relative: meta.loadPath,
@@ -85,7 +77,7 @@ export function generateLoaderOptions(
       importString: genImport(specifier, key)
     })
 
-    return importMapper.get(meta.key)!
+    return importMapper.get(meta.path)!
   }
 
   /**
@@ -102,10 +94,9 @@ export function generateLoaderOptions(
   const vueI18nConfigs = []
   for (let i = ctx.vueI18nConfigPaths.length - 1; i >= 0; i--) {
     const config = ctx.vueI18nConfigPaths[i]
-    if (config.absolute === '') continue
-    const hash = getHash(config.meta.path)
-    const key = genString(`config_${genSafeVariableName(basename(config.meta.path))}_${hash}`)
-    const specifier = asI18nVirtual(hash)
+    if (config.meta.path === '') continue
+    const key = genString(`config_${genSafeVariableName(basename(config.meta.path))}_${config.meta.hash}`)
+    const specifier = asI18nVirtual(config.meta.hash)
     const importer = genDynamicImport(specifier, { comment: `webpackChunkName: ${key}` })
     vueI18nConfigs.push({ specifier, importer, relative: config.meta.loadPath })
   }
@@ -228,12 +219,11 @@ declare module 'vue-router' {
   }
 }`
 
-export function generateI18nTypes(nuxt: Nuxt, options: NuxtI18nOptions) {
+export function generateI18nTypes(nuxt: Nuxt, { userOptions: options, normalizedLocales }: I18nNuxtContext) {
   const vueI18nTypes = options.types === 'legacy' ? ['VueI18n'] : ['ExportedGlobalComposer', 'Composer']
   const generatedLocales = simplifyLocaleOptions(nuxt, options)
   const resolvedLocaleType = typeof generatedLocales === 'string' ? 'Locale[]' : 'LocaleObject[]'
-  const localeCodeStrings = getNormalizedLocales(options.locales).map(x => JSON.stringify(x.code))
-  const narrowedLocaleType = localeCodeStrings.join(' | ') || 'string'
+  const narrowedLocaleType = normalizedLocales.map(x => JSON.stringify(x.code)).join(' | ') || 'string'
 
   const i18nType = `${vueI18nTypes.join(' & ')} & NuxtI18nRoutingCustomProperties<${resolvedLocaleType}>`
 

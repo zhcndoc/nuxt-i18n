@@ -11,18 +11,6 @@ export type {
   STRATEGIES
 } from './constants'
 
-// Options
-// export const STRATEGY_PREFIX = 'prefix'
-// export const STRATEGY_PREFIX_EXCEPT_DEFAULT = 'prefix_except_default'
-// export const STRATEGY_PREFIX_AND_DEFAULT = 'prefix_and_default'
-// export const STRATEGY_NO_PREFIX = 'no_prefix'
-// export const STRATEGIES = {
-//   PREFIX: STRATEGY_PREFIX,
-//   PREFIX_EXCEPT_DEFAULT: STRATEGY_PREFIX_EXCEPT_DEFAULT,
-//   PREFIX_AND_DEFAULT: STRATEGY_PREFIX_AND_DEFAULT,
-//   NO_PREFIX: STRATEGY_NO_PREFIX
-// } as const
-
 export type RedirectOnOptions = 'all' | 'root' | 'no prefix'
 
 export interface DetectBrowserLanguageOptions {
@@ -40,42 +28,20 @@ export type LocaleType = 'static' | 'dynamic' | 'unknown'
 
 export type LocaleFile = { path: string; cache?: boolean }
 
-export type LocaleInfo = {
-  /**
-   * NOTE:
-   *  The following fields are for `file` in the nuxt i18n module `locales` option
-   */
-  path?: string // abolute path
-  hash?: string
-  type?: LocaleType
-  /**
-   * NOTE:
-   *  The following fields are for `files` (excludes nuxt layers) in the nuxt i18n module `locales` option.
-   */
-  paths?: string[]
-  hashes?: string[]
-  types?: LocaleType[]
-} & Omit<LocaleObject, 'file' | 'files'> & {
-    code: Locale
-    files: LocaleFile[]
-    meta?: (FileMeta & { file: LocaleFile })[]
-  }
+export type LocaleInfo = Omit<LocaleObject, 'file' | 'files'> & {
+  code: Locale
+  meta: (FileMeta & { file: LocaleFile })[]
+}
 
 export type FileMeta = {
   path: string
   loadPath: string
   hash: string
   type: LocaleType
-  key: string
 }
 
 export type VueI18nConfigPathInfo = {
-  relative?: string
-  absolute?: string
-  hash?: string
-  type?: LocaleType
   rootDir: string
-  relativeBase: string
   meta: FileMeta
 }
 
@@ -457,7 +423,7 @@ export type PrefixableOptions = {
    */
   defaultLocale: Locale
   /**
-   * Curernt strategy
+   * Current strategy
    */
   strategy: Strategies
 }

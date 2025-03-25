@@ -62,12 +62,6 @@ export const checkLayerOptions = (_options: NuxtI18nOptions, nuxt: Nuxt) => {
  * This overwrites `options.locales`
  */
 export const applyLayerOptions = (options: NuxtI18nOptions, nuxt: Nuxt) => {
-  const project = nuxt.options._layers[0]
-  const layers = nuxt.options._layers
-
-  const resolvedLayerPaths = layers.map(l => resolve(project.config.rootDir, l.config.rootDir))
-  debug('using layers at paths', resolvedLayerPaths)
-
   const mergedLocales = mergeLayerLocales(options, nuxt)
   debug('merged locales', mergedLocales)
 
@@ -96,7 +90,7 @@ export function resolveI18nDir(layer: NuxtConfigLayer, i18n: NuxtI18nOptions, fr
   return resolve(layer.config.rootDir, fromRootDir ? '' : layer.config.srcDir)
 }
 
-export function resolveLayerLangDir(layer: NuxtConfigLayer, i18n: NuxtI18nOptions) {
+function resolveLayerLangDir(layer: NuxtConfigLayer, i18n: NuxtI18nOptions) {
   i18n.restructureDir ??= 'i18n'
   i18n.langDir ??= i18n.restructureDir !== false ? 'locales' : ''
   return resolve(resolveI18nDir(layer, i18n), i18n.langDir)
