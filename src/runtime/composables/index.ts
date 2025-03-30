@@ -1,21 +1,10 @@
 import { useRequestHeaders, useCookie as useNuxtCookie } from '#imports'
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { parseAcceptLanguage, wrapComposable, runtimeDetectBrowserLanguage } from '../internal'
-import { DEFAULT_DYNAMIC_PARAMS_KEY, localeCodes, normalizedLocales } from '#build/i18n.options.mjs'
-import { useHead } from '#imports'
-import { initCommonComposableOptions } from '../utils'
-import {
-  creatHeadContext,
-  getAlternateOgLocales,
-  getCanonicalLink,
-  getCurrentOgLocale,
-  getHreflangLinks,
-  getOgUrl,
-  localeHead
-} from '../routing/head'
+import { localeCodes, normalizedLocales } from '#build/i18n.options.mjs'
+import { _useLocaleHead, _useSetI18nParams } from '../routing/head'
 import { getRouteBaseName, localePath, localeRoute, switchLocalePath } from '../routing/routing'
 import { findBrowserLocale } from '../routing/utils'
-import { getComposer } from '../compatibility'
 import type { Ref } from 'vue'
 import type { Locale } from 'vue-i18n'
 import type { resolveRoute } from '../routing/routing'
@@ -27,7 +16,7 @@ import type {
   RouteMap,
   RouteMapI18n
 } from 'vue-router'
-import type { RouteLocationGenericPath } from '../types'
+import type { RouteLocationGenericPath, I18nRouteMeta } from '../types'
 
 export * from 'vue-i18n'
 export * from './shared'
@@ -37,7 +26,7 @@ export * from './shared'
  *
  * @params params - an object with {@link Locale} keys with localized parameters
  */
-export type SetI18nParamsFunction = (params: Partial<Record<Locale, unknown>>) => void
+export type SetI18nParamsFunction = (params: I18nRouteMeta) => void
 
 /**
  * Returns a {@link SetI18nParamsFunction} used to set i18n params for the current route.
@@ -47,64 +36,7 @@ export type SetI18nParamsFunction = (params: Partial<Record<Locale, unknown>>) =
  * @returns a {@link SetI18nParamsFunction}.
  */
 export function useSetI18nParams(seo?: SeoAttributesOptions): SetI18nParamsFunction {
-  const common = initCommonComposableOptions()
-  const head = useHead({})
-  const router = common.router
-
-  // @ts-expect-error accepts more
-  // Hard code to 'id', this is used to replace payload before ssr response
-  const ctx = creatHeadContext({ key: 'id', seo })
-  const _i18nParams = ref({})
-  const experimentalSSR = common.runtimeConfig.public.i18n.experimental.switchLocalePathLinkSSR
-
-  const i18nParams = computed({
-    get() {
-      return experimentalSSR
-        ? common.metaState.value
-        : (router.currentRoute.value.meta[DEFAULT_DYNAMIC_PARAMS_KEY] ?? {})
-    },
-    set(val) {
-      common.metaState.value = val
-      _i18nParams.value = val
-      router.currentRoute.value.meta[DEFAULT_DYNAMIC_PARAMS_KEY] = val
-    }
-  })
-
-  const stop = watch(
-    () => router.currentRoute.value.fullPath,
-    () => {
-      router.currentRoute.value.meta[DEFAULT_DYNAMIC_PARAMS_KEY] = experimentalSSR
-        ? common.metaState.value
-        : _i18nParams.value
-    }
-  )
-
-  onUnmounted(() => {
-    stop()
-  })
-
-  if (!ctx.baseUrl) {
-    console.warn('I18n `baseUrl` is required to generate valid SEO tag links.')
-  }
-
-  const setMeta = () => {
-    // Reset SEO Meta
-    if (!ctx.locale || !ctx.locales) {
-      head?.patch({})
-      return
-    }
-
-    // Adding SEO Meta
-    head?.patch({
-      link: [...getHreflangLinks(common, ctx), ...getCanonicalLink(common, ctx)],
-      meta: [...getOgUrl(common, ctx), ...getCurrentOgLocale(ctx), ...getAlternateOgLocales(ctx)]
-    })
-  }
-
-  return function (params: Partial<Record<Locale, unknown>>) {
-    i18nParams.value = { ...params }
-    setMeta()
-  }
+  return wrapComposable(_useSetI18nParams)(seo)
 }
 
 /**
@@ -114,7 +46,7 @@ export function useSetI18nParams(seo?: SeoAttributesOptions): SetI18nParamsFunct
  *
  * @returns The localized head properties.
  */
-export type LocaleHeadFunction = (options: I18nHeadOptions) => ReturnType<typeof localeHead>
+export type LocaleHeadFunction = (options: I18nHeadOptions) => I18nHeadMetaInfo
 
 /**
  * Returns localized head properties for locale-related aspects.
@@ -129,41 +61,7 @@ export function useLocaleHead({
   seo = true,
   key = 'hid'
 }: I18nHeadOptions = {}): Ref<I18nHeadMetaInfo> {
-  const common = initCommonComposableOptions()
-  const metaObject: Ref<I18nHeadMetaInfo> = ref({
-    htmlAttrs: {},
-    link: [],
-    meta: []
-  })
-
-  function cleanMeta() {
-    metaObject.value = {
-      htmlAttrs: {},
-      link: [],
-      meta: []
-    }
-  }
-
-  function updateMeta() {
-    metaObject.value = localeHead(common, { dir, lang, seo, key })
-  }
-
-  if (import.meta.client) {
-    const i18n = getComposer(common.i18n)
-    const stop = watch(
-      [() => common.router.currentRoute.value, i18n.locale],
-      () => {
-        cleanMeta()
-        updateMeta()
-      },
-      { immediate: true }
-    )
-    onUnmounted(() => stop())
-  } else {
-    updateMeta()
-  }
-
-  return metaObject
+  return wrapComposable(_useLocaleHead)({ dir, lang, seo, key })
 }
 
 /**
@@ -316,21 +214,23 @@ export function useCookieLocale(): Ref<string> {
   const locale: Ref<string> = ref('')
   const detect = runtimeDetectBrowserLanguage()
 
-  if (detect && detect.useCookie) {
-    const cookieKey = detect.cookieKey!
+  if (!detect || !detect.useCookie) {
+    return locale
+  }
 
-    let code: string | null = null
-    if (import.meta.client) {
-      code = useNuxtCookie<string>(cookieKey).value
-    } else if (import.meta.server) {
-      const cookie = useRequestHeaders(['cookie'])
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      code = (cookie as any)[cookieKey]
-    }
+  const cookieKey = detect.cookieKey!
 
-    if (code && localeCodes.includes(code)) {
-      locale.value = code
-    }
+  let code: string | null = null
+  if (import.meta.client) {
+    code = useNuxtCookie<string>(cookieKey).value
+  } else if (import.meta.server) {
+    const cookie = useRequestHeaders(['cookie'])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    code = (cookie as any)[cookieKey]
+  }
+
+  if (code && localeCodes.includes(code)) {
+    locale.value = code
   }
 
   return locale

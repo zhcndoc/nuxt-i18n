@@ -1,8 +1,8 @@
 import { existsSync, promises as fsp } from 'node:fs'
-import { resolve } from 'node:path'
 import { defu } from 'defu'
 import * as _kit from '@nuxt/kit'
 import { useTestContext } from './context'
+import { resolve } from 'node:path'
 import { relative } from 'pathe'
 
 import type { VitestContext } from './types'
@@ -25,10 +25,10 @@ const isNuxtApp = (dir: string) => {
   return (
     existsSync(dir) &&
     (existsSync(resolve(dir, 'pages')) ||
+      existsSync(resolve(dir, 'nuxt.config.ts')) ||
       existsSync(resolve(dir, 'nuxt.config.js')) ||
       existsSync(resolve(dir, 'nuxt.config.mjs')) ||
-      existsSync(resolve(dir, 'nuxt.config.cjs')) ||
-      existsSync(resolve(dir, 'nuxt.config.ts')))
+      existsSync(resolve(dir, 'nuxt.config.cjs')))
   )
 }
 
@@ -82,11 +82,13 @@ export async function loadFixture(testContext: VitestContext) {
     configFile: ctx.options.configFile
   })
 
-  // NOTE: the following code is original code
-  // await fsp.mkdir(ctx.nuxt.options.buildDir, { recursive: true })
-  await clearDir(ctx.nuxt.options.buildDir)
-  if (ctx.nuxt.options.nitro?.output?.dir) {
-    await clearDir(ctx.nuxt.options.nitro.output?.dir)
+  const buildDir = ctx.nuxt.options.buildDir
+  const outputDir = ctx.nuxt.options.nitro?.output?.dir
+  ctx.teardown ??= []
+
+  await clearDir(buildDir)
+  if (outputDir) {
+    await clearDir(outputDir)
   }
 }
 
@@ -94,7 +96,6 @@ async function clearDir(path: string) {
   await fsp.rm(path, { recursive: true, force: true })
   await fsp.mkdir(path, { recursive: true })
 }
-
 export async function buildFixture() {
   const ctx = useTestContext()
   // Hide build info for test

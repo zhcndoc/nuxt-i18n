@@ -1,16 +1,17 @@
-import { hasProtocol, parsePath, parseQuery, withTrailingSlash, withoutTrailingSlash } from 'ufo'
+import { hasProtocol, joinURL, parsePath, parseQuery, withTrailingSlash, withoutTrailingSlash } from 'ufo'
 import { DEFAULT_DYNAMIC_PARAMS_KEY } from '#build/i18n.options.mjs'
 import { isNavigationFailure } from 'vue-router'
 import { unref } from '#imports'
 
 import { getI18nTarget } from '../compatibility'
+import { getDomainFromLocale } from '../internal'
 import { getLocaleRouteName, getRouteName } from './utils'
-import { extendPrefixable, extendSwitchLocalePathIntercepter, type CommonComposableOptions } from '../utils'
+import { prefixable, type CommonComposableOptions } from '../utils'
 
 import type { Locale } from 'vue-i18n'
 import type { RouteLocationRaw, RouteLocationPathRaw, RouteLocationNamedRaw, RouteMap } from 'vue-router'
 import type { I18nPublicRuntimeConfig } from '#internal-i18n-types'
-import type { CompatRoute, RouteLocationGenericPath } from '../types'
+import type { CompatRoute, I18nRouteMeta, RouteLocationGenericPath } from '../types'
 
 /**
  * Returns base name of current (if argument not provided) or passed in route.
@@ -89,8 +90,7 @@ function resolveRouteObject(common: CommonComposableOptions, route: RouteLike, l
     }
 
     // if route has a path defined but no name, resolve full route using the path
-    const prefixable = extendPrefixable(common.runtimeConfig)
-    if (prefixable({ ...runtimeI18n, currentLocale: locale })) {
+    if (!runtimeI18n.differentDomains && prefixable(locale, runtimeI18n.defaultLocale, runtimeI18n.strategy)) {
       route.path = '/' + locale + route.path
     }
 
@@ -132,7 +132,7 @@ export function resolveRoute(common: CommonComposableOptions, route: RouteLocati
 function getLocalizableMetaFromDynamicParams(
   common: CommonComposableOptions,
   route: CompatRoute
-): Record<Locale, Record<string, unknown>> {
+): Partial<I18nRouteMeta> {
   if (common.runtimeConfig.public.i18n.experimental.switchLocalePathLinkSSR) {
     return unref(common.metaState.value)
   }
@@ -173,9 +173,13 @@ export function switchLocalePath(common: CommonComposableOptions, locale: Locale
 
   const path = localePath(common, routeCopy, locale)
 
-  // custom locale path with interceptor
-  const switchLocalePathIntercepter = extendSwitchLocalePathIntercepter(common.runtimeConfig)
-  return switchLocalePathIntercepter(path, locale)
+  // custom locale path for domains
+  if (common.runtimeConfig.public.i18n.differentDomains) {
+    const domain = getDomainFromLocale(locale)
+    return (domain && joinURL(domain, path)) || path
+  }
+
+  return path
 }
 
 /**

@@ -13,6 +13,8 @@ export type RouteLocationGenericPath = Omit<RouteLocationAsRelative, 'path' | 'n
   name?: RouteLocationAsRelative['name'] | null
 }
 
+export type I18nRouteMeta = Partial<Record<Locale, Record<string, unknown>>>
+
 /**
  * Called before the app's locale is switched.
  *
@@ -189,6 +191,7 @@ declare module 'vue-i18n' {
     __pendingLocale?: string
     __pendingLocalePromise?: Promise<void>
     __firstAccess: boolean
+    __localeFromRoute: (route: string | CompatRoute) => string
     /**
      * Sets the value of the locale property on VueI18n or Composer instance
      *
