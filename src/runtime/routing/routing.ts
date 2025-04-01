@@ -1,10 +1,11 @@
 import { hasProtocol, joinURL, parsePath, parseQuery, withTrailingSlash, withoutTrailingSlash } from 'ufo'
 import { DEFAULT_DYNAMIC_PARAMS_KEY } from '#build/i18n.options.mjs'
+import { assign, isObject, isString } from '@intlify/shared'
 import { isNavigationFailure } from 'vue-router'
 import { unref } from '#imports'
 
 import { getI18nTarget } from '../compatibility'
-import { getDomainFromLocale } from '../internal'
+import { getDomainFromLocale } from '../domain'
 import { getLocaleRouteName, getRouteName } from './utils'
 import { prefixable, type CommonComposableOptions } from '../utils'
 
@@ -24,12 +25,11 @@ export function getRouteBaseName<Name extends keyof RouteMap = keyof RouteMap>(
   route: Name | RouteLocationGenericPath | null
 ) {
   const _route = unref(route)
-  const routeName = typeof _route === 'object' ? _route?.name : _route
+  const routeName = isObject(_route) ? _route?.name : _route
   if (_route == null || !routeName) {
     return
   }
-  const name = getRouteName(routeName)
-  return name.split(common.runtimeConfig.public.i18n.routesNameSeparator)[0]
+  return getRouteName(routeName).split(common.runtimeConfig.public.i18n.routesNameSeparator)[0]
 }
 
 /**
@@ -37,7 +37,7 @@ export function getRouteBaseName<Name extends keyof RouteMap = keyof RouteMap>(
  */
 export function localePath(common: CommonComposableOptions, route: RouteLocationRaw, locale?: Locale): string {
   // return external url as is
-  if (typeof route === 'string' && hasProtocol(route, { acceptRelative: true })) {
+  if (isString(route) && hasProtocol(route, { acceptRelative: true })) {
     return route
   }
 
@@ -59,8 +59,8 @@ type RouteLike = (RouteLocationPathRaw & { name?: string }) | (RouteLocationName
  */
 function normalizeRawLocation(route: RouteLocationRaw): RouteLike {
   // return a copy of the object
-  if (typeof route !== 'string') {
-    return Object.assign({}, route)
+  if (!isString(route)) {
+    return assign({}, route)
   }
 
   // route path
@@ -161,7 +161,7 @@ export function switchLocalePath(common: CommonComposableOptions, locale: Locale
    */
   const routeCopy = {
     name,
-    params: Object.assign({}, route.params, resolvedParams),
+    params: assign({}, route.params, resolvedParams),
     fullPath: route.fullPath,
     query: route.query,
     hash: route.hash,
@@ -209,5 +209,5 @@ function resolve(common: CommonComposableOptions, route: RouteLocationPathRaw, l
     return route
   }
 
-  return common.router.resolve(Object.assign({}, route, _route, { path: targetPath }))
+  return common.router.resolve(assign({}, route, _route, { path: targetPath }))
 }

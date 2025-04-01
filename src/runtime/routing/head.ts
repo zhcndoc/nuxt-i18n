@@ -1,8 +1,7 @@
 import { joinURL, withQuery, type QueryValue } from 'ufo'
 import { computed, getCurrentScope, onScopeDispose, ref, unref, useHead, useNuxtApp, watch, type Ref } from '#imports'
-import { assign, isObject } from '@intlify/shared'
+import { assign, isObject, isString } from '@intlify/shared'
 
-import { getNormalizedLocales } from './utils'
 import { getRouteBaseName, localeRoute, switchLocalePath } from './routing'
 import { getComposer } from '../compatibility'
 import { toArray } from '../utils'
@@ -36,7 +35,7 @@ type HeadContext = {
 function createHeadContext(options: Required<I18nHeadOptions>): HeadContext {
   const nuxtApp = useNuxtApp()
   const locale = unref(nuxtApp.$i18n.locale)
-  const locales = getNormalizedLocales(unref(nuxtApp.$i18n.locales))
+  const locales = unref(nuxtApp.$i18n.locales).map(x => (isString(x) ? { code: x } : x))
   const currentLocale: LocaleObject = locales.find(l => l.code === locale) || { code: locale }
   const baseUrl = joinURL(unref(getComposer(nuxtApp.$i18n).baseUrl), nuxtApp.$config.app.baseURL)
   const runtimeI18n = nuxtApp.$config.public.i18n as I18nPublicRuntimeConfig
@@ -79,16 +78,15 @@ export function localeHead(
 
 export function _useLocaleHead(
   common: CommonComposableOptions,
-  { dir = true, lang = true, seo = true, key = 'hid' }: I18nHeadOptions = {}
+  options: Required<I18nHeadOptions>
 ): Ref<I18nHeadMetaInfo> {
-  const ctxOptions = { dir, lang, seo, key }
-  const metaObject = ref(_localeHead(common, ctxOptions))
+  const metaObject = ref(_localeHead(common, options))
 
   if (import.meta.client) {
     const i18n = getComposer(common.i18n)
     const unsub = watch(
       [() => common.router.currentRoute.value, i18n.locale],
-      () => (metaObject.value = _localeHead(common, ctxOptions))
+      () => (metaObject.value = _localeHead(common, options))
     )
     if (getCurrentScope()) {
       onScopeDispose(unsub)
@@ -187,10 +185,10 @@ function _localeHead(common: CommonComposableOptions, options: Required<I18nHead
 }
 
 function getHreflangLinks(common: CommonComposableOptions, ctx: HeadContext) {
-  const { defaultLocale, strategy } = ctx.runtimeI18n
+  const { defaultLocale, strategy, differentDomains } = ctx.runtimeI18n
   const links: MetaAttrs[] = []
 
-  if (strategy === 'no_prefix') return links
+  if (strategy === 'no_prefix' && !differentDomains) return links
 
   const localeMap = new Map<string, LocaleObject>()
   for (const locale of ctx.locales) {
@@ -219,10 +217,9 @@ function getHreflangLinks(common: CommonComposableOptions, ctx: HeadContext) {
     const localePath = switchLocalePath(common, mapLocale.code, routeWithoutQuery)
     if (!localePath) continue
 
-    const href = withQuery(
-      joinURL(ctx.baseUrl, localePath),
-      strictCanonicals ? getCanonicalQueryParams(common, ctx) : {}
-    )
+    // localized paths with domain already contain baseUrl
+    const fullPath = differentDomains && mapLocale.domain ? localePath : joinURL(ctx.baseUrl, localePath)
+    const href = withQuery(fullPath, strictCanonicals ? getCanonicalQueryParams(common, ctx) : {})
 
     links.push({ [ctx.key]: `i18n-alt-${language}`, rel: 'alternate', href, hreflang: language })
     if (defaultLocale && defaultLocale === mapLocale.code) {

@@ -1,4 +1,5 @@
 import { effectScope } from '#imports'
+import { assign } from '@intlify/shared'
 import { isVueI18n, getComposer } from '../compatibility'
 
 import type { NuxtApp } from 'nuxt/app'
@@ -8,14 +9,8 @@ import type { Composer, ComposerExtender, ExportedGlobalComposer, I18n, VueI18n,
  * Internal options for the Vue I18n plugin.
  */
 interface VueI18nInternalPluginOptions {
-  /**
-   * @internal
-   */
-  __composerExtend?: ComposerExtender
-  /**
-   * @internal
-   */
-  __vueI18nExtend?: VueI18nExtender
+  __composerExtend: ComposerExtender
+  __vueI18nExtend: VueI18nExtender
 }
 
 type VueI18nExtendOptions = {
@@ -34,7 +29,7 @@ export function extendI18n(i18n: I18n, { extendComposer, extendComposerInstance 
 
   const installI18n = i18n.install.bind(i18n)
   i18n.install = (app: NuxtApp['vueApp'], ...options: VueI18nInternalPluginOptions[]) => {
-    const pluginOptions = Object.assign({}, options[0])
+    const pluginOptions = assign({}, options[0])
 
     pluginOptions.__composerExtend = (c: Composer) => {
       extendComposerInstance(c, getComposer(i18n))
@@ -51,9 +46,8 @@ export function extendI18n(i18n: I18n, { extendComposer, extendComposerInstance 
     // install Vue I18n
     Reflect.apply(installI18n, i18n, [app, pluginOptions])
 
-    const globalComposer = getComposer(i18n)
-
     // extend global
+    const globalComposer = getComposer(i18n)
     scope.run(() => {
       extendComposer(globalComposer)
       if (i18n.mode === 'legacy' && isVueI18n(i18n.global)) {
@@ -75,6 +69,4 @@ export function extendI18n(i18n: I18n, { extendComposer, extendComposerInstance 
       }
     }
   }
-
-  return scope
 }
