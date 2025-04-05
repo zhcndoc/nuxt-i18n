@@ -1,17 +1,31 @@
 import createDebug from 'debug'
-import { isString } from '@intlify/shared'
+import { assign, isString } from '@intlify/shared'
 import { genImport, genDynamicImport, genSafeVariableName, genString } from 'knitwork'
 import { resolve, relative, join, basename } from 'pathe'
 import { distDir, runtimeDir } from './dirs'
-import { getLayerI18n, getLocalePaths } from './utils'
+import { getLayerI18n, getLocaleFiles } from './utils'
 import { asI18nVirtual } from './transform/utils'
 
 import type { Nuxt } from '@nuxt/schema'
-import type { NuxtI18nOptions, LocaleInfo, LocaleObject, LocaleFile } from './types'
+import type { NuxtI18nOptions, LocaleObject, ExperimentalFeatures } from './types'
 import type { Locale } from 'vue-i18n'
 import type { I18nNuxtContext } from './context'
 
 const debug = createDebug('@nuxtjs/i18n:gen')
+
+function formatLocaleFiles(
+  nuxt: Nuxt,
+  locale: LocaleObject,
+  format: ExperimentalFeatures['generatedLocaleFilePathFormat'] = 'absolute'
+) {
+  if (format == 'off') {
+    delete locale.files
+  } else if (format === 'relative') {
+    locale.files = getLocaleFiles(locale).map(x => assign(x, { path: relative(nuxt.options.rootDir, x.path) }))
+  }
+  delete locale.file
+  return locale
+}
 
 export function simplifyLocaleOptions(
   nuxt: Nuxt,
@@ -24,25 +38,10 @@ export function simplifyLocaleOptions(
     options?.i18nModules?.some(module => isLocaleObjectsArray(module?.locales))
 
   const locales = (options.locales ?? []) as LocaleObject[]
-  const pathFormat = options.experimental?.generatedLocaleFilePathFormat ?? 'absolute'
 
-  return locales.map(({ meta, ...locale }) => {
-    if (!hasLocaleObjects) {
-      return locale.code
-    }
-
-    if (locale.file || (locale.files?.length ?? 0) > 0) {
-      locale.files = getLocalePaths(locale)
-
-      if (pathFormat === 'relative') {
-        locale.files = locale.files.map(x => relative(nuxt.options.rootDir, x))
-      }
-    } else {
-      delete locale.files
-    }
-    delete locale.file
-
-    return locale
+  return locales.map(locale => {
+    if (!hasLocaleObjects) return locale.code
+    return formatLocaleFiles(nuxt, locale, options.experimental?.generatedLocaleFilePathFormat)
   })
 }
 
@@ -61,32 +60,30 @@ export function generateLoaderOptions(
 ) {
   debug('generateLoaderOptions: lazy', ctx.options.lazy)
 
-  const importMapper = new Map<string, LocaleLoaderData>()
-  function generateLocaleImports(meta: NonNullable<LocaleInfo['meta']>[number]) {
-    if (importMapper.has(meta.path)) return importMapper.get(meta.path)!
-    const key = `locale_${genSafeVariableName(basename(meta.path))}_${meta.hash}`
-    const specifier = asI18nVirtual(meta.hash)
-    const async = genDynamicImport(specifier, { comment: `webpackChunkName: ${genString(key)}` })
-    const sync = `() => Promise.resolve(${key})`
-
-    importMapper.set(meta.path, {
-      specifier,
-      key: genString(key),
-      relative: meta.loadPath,
-      cache: meta.file.cache ?? true,
-      load: ctx.options.lazy ? async : sync,
-      importString: genImport(specifier, key)
-    })
-
-    return importMapper.get(meta.path)!
-  }
-
   /**
    * Prepare locale file imports
    */
+  const importMapper = new Map<string, LocaleLoaderData>()
   const localeLoaders: Record<string, LocaleLoaderData[]> = {}
   for (const locale of ctx.localeInfo) {
-    localeLoaders[locale.code] = (locale?.meta ?? []).map(meta => generateLocaleImports(meta))
+    localeLoaders[locale.code] ??= []
+    for (const meta of locale.meta) {
+      if (!importMapper.has(meta.path)) {
+        const key = `locale_${genSafeVariableName(basename(meta.path))}_${meta.hash}`
+        const specifier = asI18nVirtual(meta.hash)
+        importMapper.set(meta.path, {
+          specifier,
+          key: genString(key),
+          relative: meta.loadPath,
+          cache: meta.file.cache ?? true,
+          load: ctx.options.lazy
+            ? genDynamicImport(specifier, { comment: `webpackChunkName: ${genString(key)}` })
+            : `() => Promise.resolve(${key})`,
+          importString: genImport(specifier, key)
+        })
+      }
+      localeLoaders[locale.code].push(importMapper.get(meta.path)!)
+    }
   }
 
   /**
@@ -95,41 +92,35 @@ export function generateLoaderOptions(
   const vueI18nConfigs = []
   for (let i = ctx.vueI18nConfigPaths.length - 1; i >= 0; i--) {
     const config = ctx.vueI18nConfigPaths[i]
-    if (config.meta.path === '') continue
     const key = genString(`config_${genSafeVariableName(basename(config.meta.path))}_${config.meta.hash}`)
     const specifier = asI18nVirtual(config.meta.hash)
     const importer = genDynamicImport(specifier, { comment: `webpackChunkName: ${key}` })
     vueI18nConfigs.push({ specifier, importer, relative: config.meta.loadPath })
   }
 
-  const pathFormat = ctx.options.experimental?.generatedLocaleFilePathFormat ?? 'absolute'
-
-  const nuxtI18nOptions = {
-    ...ctx.options,
+  const pathFormat = ctx.options.experimental?.generatedLocaleFilePathFormat
+  const nuxtI18nOptions = assign({}, ctx.options, {
     locales: simplifyLocaleOptions(nuxt, ctx.options),
     i18nModules: (ctx.options.i18nModules ?? []).map(x => {
       if (pathFormat === 'absolute' || x.langDir == null) return x
-      return { ...x, langDir: relative(nuxt.options.rootDir, x.langDir) }
+      if (pathFormat === 'off') {
+        delete x.langDir
+      } else {
+        x.langDir = relative(nuxt.options.rootDir, x.langDir)
+      }
+      x.locales = (x.locales ?? []).map(locale =>
+        isString(locale) ? locale : formatLocaleFiles(nuxt, locale, pathFormat)
+      ) as string[] | LocaleObject[]
+      return x
     })
-  }
+  })
   // @ts-expect-error is required
   delete nuxtI18nOptions.vueI18n
 
   /**
    * Process locale file paths in `normalizedLocales`
    */
-  const normalizedLocales = ctx.normalizedLocales.map(x => {
-    if (pathFormat === 'absolute') return x
-    if (x.files == null) return x
-
-    return {
-      ...x,
-      files: x.files.map(f => {
-        if (isString(f)) return relative(nuxt.options.rootDir, f)
-        return { ...f, path: relative(nuxt.options.rootDir, f.path) }
-      }) as string[] | LocaleFile[]
-    }
-  })
+  const normalizedLocales = ctx.normalizedLocales.map(x => formatLocaleFiles(nuxt, x, pathFormat))
 
   return { localeLoaders, nuxtI18nOptions, vueI18nConfigs, normalizedLocales }
 }
