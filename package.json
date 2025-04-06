@@ -1,7 +1,7 @@
 {
   "name": "@nuxtjs/i18n",
   "type": "module",
-  "version": "9.5.1",
+  "version": "9.5.2",
   "packageManager": "pnpm@10.6.5",
   "description": "Internationalization for Nuxt",
   "contributors": [
@@ -88,7 +88,7 @@
   },
   "dependencies": {
     "@intlify/h3": "^0.6.1",
-    "@intlify/shared": "^10.0.6",
+    "@intlify/shared": "^10.0.7",
     "@intlify/unplugin-vue-i18n": "^6.0.5",
     "@intlify/utils": "^0.13.0",
     "@miyaneee/rollup-plugin-json5": "^1.2.0",
@@ -110,7 +110,7 @@
     "ufo": "^1.5.4",
     "unplugin": "^2.2.2",
     "unplugin-vue-router": "^0.12.0",
-    "vue-i18n": "^10.0.6",
+    "vue-i18n": "^10.0.7",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
