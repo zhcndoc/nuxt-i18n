@@ -1,0 +1,1 @@
+import{aY as t,b0 as u}from"./BPH-Rl3K.js";function r(){t();function o({title:e="",description:a="",headline:s=""}){u({title:e,ogTitle:e,description:a,ogDescription:a})}return{setPageMeta:o}}export{r as u};

@@ -1,0 +1,1 @@
+import{d as n,e as t,S as c,y as p,o as l,am as s,Y as m}from"./BPH-Rl3K.js";const i={base:"border-t border-(--ui-border) my-12"},u=m;var e,r;const d=s({extend:s(i),...((r=(e=u.uiPro)==null?void 0:e.prose)==null?void 0:r.hr)||{}}),h=n({__name:"Hr",props:{class:{}},setup(o){const a=o;return(f,_)=>(l(),t("hr",{class:c(p(d)({class:a.class}))},null,2))}});export{h as default};

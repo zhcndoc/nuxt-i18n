@@ -1,0 +1,1 @@
+import{d as r,e as c,v as p,S as l,y as m,o as f,am as s,Y as g}from"./BPH-Rl3K.js";const i={base:""},u=g;var o,e;const d=s({extend:s(i),...((e=(o=u.uiPro)==null?void 0:o.prose)==null?void 0:e.strong)||{}}),C=r({__name:"Strong",props:{class:{}},setup(a){const n=a;return(t,_)=>(f(),c("strong",{class:l(m(d)({class:n.class}))},[p(t.$slots,"default")],2))}});export{C as default};

@@ -1,0 +1,1 @@
+import{d as r,e as c,v as p,S as l,y as d,o as m,am as s,Y as f}from"./BPH-Rl3K.js";const i={base:""},u=f;var o,e;const b=s({extend:s(i),...((e=(o=u.uiPro)==null?void 0:o.prose)==null?void 0:e.tbody)||{}}),C=r({__name:"Tbody",props:{class:{}},setup(a){const t=a;return(n,y)=>(m(),c("tbody",{class:l(d(b)({class:t.class}))},[p(n.$slots,"default")],2))}});export{C as default};
