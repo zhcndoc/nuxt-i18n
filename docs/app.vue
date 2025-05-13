@@ -21,7 +21,7 @@ useSeoMeta({
 useHead({ script: [{ async: '', src: 'https://www.zhcndoc.com/js/common.js' }] })
 
 // Navigation Data
-const { data: navigation } = await useAsyncData('navigation', () => queryCollectionNavigation('docs'))
+const { data: navigation } = await useAsyncData('docs_navigation', () => queryCollectionNavigation('docs'))
 const nav = computed<ContentNavigationItem[]>(
   () => mapContentNavigation(navigation.value).at(0).children as ContentNavigationItem[]
 )
