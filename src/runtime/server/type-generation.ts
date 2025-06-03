@@ -1,20 +1,21 @@
 import { deepCopy, isArray, isFunction, isObject } from '@intlify/shared'
-import { vueI18nConfigs, localeLoaders, nuxtI18nOptions, normalizedLocales } from '#internal/i18n/options.mjs'
-// @ts-expect-error virtual file
+import { vueI18nConfigs, localeLoaders, normalizedLocales } from '#internal/i18n/options.mjs'
 import { dtsFile } from '#internal/i18n-type-generation-options'
-import { loadLocale, loadVueI18nOptions } from '../messages'
-import { nuxtMock } from './utils'
+import { loadVueI18nOptions } from '../shared/messages'
+import { getMergedMessages } from './utils/messages'
 import { writeFile } from 'fs/promises'
+import { useRuntimeConfig } from '#imports'
 
-import type { DefineLocaleMessage } from '@intlify/h3'
-import type { Locale, LocaleMessages, I18nOptions } from 'vue-i18n'
+import type { I18nOptions } from 'vue-i18n'
+import type { I18nPublicRuntimeConfig } from '#internal-i18n-types'
 
 export default async () => {
-  const targetLocales: string[] = []
+  const { experimental, defaultLocale } = useRuntimeConfig().public.i18n as I18nPublicRuntimeConfig
 
-  if (nuxtI18nOptions.experimental.typedOptionsAndMessages === 'default' && nuxtI18nOptions.defaultLocale != null) {
-    targetLocales.push(nuxtI18nOptions.defaultLocale)
-  } else if (nuxtI18nOptions.experimental.typedOptionsAndMessages === 'all') {
+  const targetLocales: string[] = []
+  if (experimental.typedOptionsAndMessages === 'default' && defaultLocale != null) {
+    targetLocales.push(defaultLocale)
+  } else if (experimental.typedOptionsAndMessages === 'all') {
     targetLocales.push(...normalizedLocales.map(x => x.code))
   }
 
@@ -24,30 +25,21 @@ export default async () => {
     numberFormats: {}
   }
 
-  const vueI18nConfig: I18nOptions = await loadVueI18nOptions(vueI18nConfigs, nuxtMock)
+  const vueI18nConfig: I18nOptions = await loadVueI18nOptions(vueI18nConfigs)
   for (const locale of targetLocales) {
     deepCopy(vueI18nConfig.messages?.[locale] || {}, merged.messages)
     deepCopy(vueI18nConfig.numberFormats?.[locale] || {}, merged.numberFormats)
     deepCopy(vueI18nConfig.datetimeFormats?.[locale] || {}, merged.datetimeFormats)
   }
 
-  const loaderPromises: Promise<void>[] = []
+  const loaderPromises: Promise<unknown>[] = []
   for (const locale in localeLoaders) {
     if (!targetLocales.includes(locale)) continue
-
-    async function loader() {
-      const setter = (_: Locale, message: LocaleMessages<DefineLocaleMessage, Locale>) => {
-        deepCopy(message, merged.messages)
-      }
-
-      await loadLocale(locale, localeLoaders, setter, nuxtMock)
-    }
-
+    const loader = async () => deepCopy(await getMergedMessages(locale, []), merged.messages)
     loaderPromises.push(loader())
   }
 
   await Promise.all(loaderPromises)
-
   await writeFile(dtsFile, generateTypeCode(merged), 'utf-8')
 }
 
@@ -66,9 +58,6 @@ function generateInterface(obj: Record<string, unknown>, indentLevel = 1) {
       str += generateInterface(obj[key] as Record<string, unknown>, indentLevel + 1)
       str += `${indent}};\n`
     } else {
-      // str += `${indent}/**\n`
-      // str += `${indent} * ${JSON.stringify(obj[key])}\n`
-      // str += `${indent} */\n`
       let propertyType = isArray(obj[key]) ? 'unknown[]' : typeof obj[key]
       if (isFunction(propertyType)) {
         propertyType = '() => string'

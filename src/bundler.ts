@@ -1,41 +1,25 @@
-/* eslint-disable @typescript-eslint/no-floating-promises */
-import createDebug from 'debug'
-import { extendViteConfig, addWebpackPlugin, addBuildPlugin, addTemplate, addRspackPlugin } from '@nuxt/kit'
+import { extendViteConfig, addWebpackPlugin, addBuildPlugin, addRspackPlugin, useNuxt } from '@nuxt/kit'
 import VueI18nPlugin from '@intlify/unplugin-vue-i18n'
-import { toArray } from './utils'
+import { logger, toArray } from './utils'
 import { TransformMacroPlugin } from './transform/macros'
 import { ResourcePlugin } from './transform/resource'
 import { TransformI18nFunctionPlugin } from './transform/i18n-function-injection'
-import { asI18nVirtual } from './transform/utils'
-import { version } from '../package.json'
+import { HeistPlugin } from './transform/heist'
 
 import type { Nuxt } from '@nuxt/schema'
 import type { PluginOptions } from '@intlify/unplugin-vue-i18n'
 import type { BundlerPluginOptions } from './transform/utils'
 import type { I18nNuxtContext } from './context'
-
-const debug = createDebug('@nuxtjs/i18n:bundler')
+import {
+  DEFAULT_COOKIE_KEY,
+  DYNAMIC_PARAMS_KEY,
+  NUXT_I18N_MODULE_ID,
+  FULL_STATIC_LIFETIME,
+  SWITCH_LOCALE_PATH_LINK_IDENTIFIER
+} from './constants'
+import { version } from '../package.json'
 
 export async function extendBundler(ctx: I18nNuxtContext, nuxt: Nuxt) {
-  addTemplate({
-    write: true,
-    filename: 'nuxt-i18n-logger.mjs',
-    getContents() {
-      if (!ctx.options.debug && !nuxt.options._i18nTest) {
-        return `export function createLogger() {}`
-      }
-
-      return `
-import { createConsola } from 'consola'
-const debugLogger = createConsola({ level: ${ctx.options.debug === 'verbose' ? 999 : 4} }).withTag('i18n')
-export function createLogger(label) {
-  return debugLogger.withTag(label)
-}`
-    }
-  })
-
-  nuxt.options.alias[asI18nVirtual('logger')] = ctx.resolver.resolve(nuxt.options.buildDir, './nuxt-i18n-logger.mjs')
-
   /**
    * shared plugins (nuxt/nitro)
    */
@@ -48,6 +32,7 @@ export function createLogger(label) {
   nuxt.hook('nitro:config', async cfg => {
     cfg.rollupConfig!.plugins = (await cfg.rollupConfig!.plugins) || []
     cfg.rollupConfig!.plugins = toArray(cfg.rollupConfig!.plugins)
+    cfg.rollupConfig!.plugins.push(HeistPlugin(pluginOptions, ctx).rollup())
     cfg.rollupConfig!.plugins.push(resourcePlugin.rollup())
   })
 
@@ -55,36 +40,27 @@ export function createLogger(label) {
    * shared plugins (vite/webpack/rspack)
    */
   const { options } = ctx
-  const localePaths = [...new Set([...ctx.localeInfo.flatMap(x => x.meta.map(m => m.path))])]
+  const localePaths = [...new Set(ctx.localeInfo.flatMap(x => x.meta.map(m => m.path)))]
+  ctx.fullStatic = ctx.localeInfo.flatMap(x => x.meta).every(x => x.type === 'static' || x.file.cache !== false)
+
   const vueI18nPluginOptions: PluginOptions = {
+    ...options.bundle,
+    ...options.compilation,
+    ...options.customBlocks,
     allowDynamic: true,
-    include: localePaths.length ? localePaths : undefined,
-    runtimeOnly: options.bundle.runtimeOnly,
-    fullInstall: options.bundle.fullInstall,
-    onlyLocales: options.bundle.onlyLocales,
-    escapeHtml: options.compilation.escapeHtml,
-    compositionOnly: options.bundle.compositionOnly,
-    strictMessage: options.compilation.strictMessage,
-    defaultSFCLang: options.customBlocks.defaultSFCLang,
-    globalSFCScope: options.customBlocks.globalSFCScope,
-    dropMessageCompiler: options.bundle.dropMessageCompiler,
-    optimizeTranslationDirective: options.bundle.optimizeTranslationDirective
+    optimizeTranslationDirective: false,
+    include: localePaths.length ? localePaths : undefined
   }
   addBuildPlugin({
     vite: () => VueI18nPlugin.vite(vueI18nPluginOptions),
     webpack: () => VueI18nPlugin.webpack(vueI18nPluginOptions)
   })
   addBuildPlugin(TransformMacroPlugin(pluginOptions))
-  if (options.experimental.autoImportTranslationFunctions) {
+  if (options.autoDeclare && nuxt.options.imports.autoImport !== false) {
     addBuildPlugin(TransformI18nFunctionPlugin(pluginOptions))
   }
 
-  const defineConfig = {
-    ...getFeatureFlags(options.bundle),
-    __DEBUG__: String(!!options.debug),
-    __TEST__: String(!!options.debug || nuxt.options._i18nTest),
-    __NUXT_I18N_VERSION__: JSON.stringify(version)
-  }
+  const defineConfig = getDefineConfig(ctx)
   /**
    * webpack plugin
    */
@@ -93,7 +69,7 @@ export function createLogger(label) {
       const webpack = await import('webpack').then(m => m.default || m)
       addWebpackPlugin(new webpack.DefinePlugin(defineConfig))
     } catch (e: unknown) {
-      debug((e as Error).message)
+      logger.error((e as Error).message)
     }
   }
 
@@ -105,7 +81,7 @@ export function createLogger(label) {
       const { rspack } = await import('@rspack/core')
       addRspackPlugin(new rspack.DefinePlugin(defineConfig))
     } catch (e: unknown) {
-      debug((e as Error).message)
+      logger.error((e as Error).message)
     }
   }
 
@@ -113,20 +89,49 @@ export function createLogger(label) {
    * vite plugin
    */
   extendViteConfig(config => {
-    config.define ??= {}
-    config.define['__DEBUG__'] = defineConfig['__DEBUG__']
-    config.define['__TEST__'] = defineConfig['__TEST__']
-    config.define['__NUXT_I18N_VERSION__'] = JSON.stringify(version)
-
-    debug('vite.config.define', config.define)
+    config.define = Object.assign({}, config.define, defineConfig)
   })
 }
 
-export function getFeatureFlags({ compositionOnly = true, fullInstall = true, dropMessageCompiler = false }) {
-  return {
-    __VUE_I18N_FULL_INSTALL__: String(fullInstall),
-    __VUE_I18N_LEGACY_API__: String(!compositionOnly),
-    __INTLIFY_PROD_DEVTOOLS__: 'false',
-    __INTLIFY_DROP_MESSAGE_COMPILER__: String(dropMessageCompiler)
+export function getDefineConfig({ options, fullStatic }: I18nNuxtContext, server = false, nuxt = useNuxt()) {
+  const cacheLifetime = options.experimental.cacheLifetime ?? (fullStatic ? FULL_STATIC_LIFETIME : -1)
+  const isCacheEnabled = cacheLifetime >= 0 && (!nuxt.options.dev || !!options.experimental.devCache)
+
+  const common = {
+    __IS_SSR__: String(nuxt.options.ssr),
+    __IS_SSG__: String(nuxt.options._generate),
+    __PARALLEL_PLUGIN__: String(options.parallelPlugin),
+    __DYNAMIC_PARAMS_KEY__: JSON.stringify(DYNAMIC_PARAMS_KEY),
+    __DEFAULT_COOKIE_KEY__: JSON.stringify(DEFAULT_COOKIE_KEY),
+    __NUXT_I18N_VERSION__: JSON.stringify(version),
+    __NUXT_I18N_MODULE_ID__: JSON.stringify(NUXT_I18N_MODULE_ID),
+    __SWITCH_LOCALE_PATH_LINK_IDENTIFIER__: JSON.stringify(SWITCH_LOCALE_PATH_LINK_IDENTIFIER),
+    __I18N_STRATEGY__: JSON.stringify(options.strategy),
+    __DIFFERENT_DOMAINS__: String(options.differentDomains),
+    __MULTI_DOMAIN_LOCALES__: String(options.multiDomainLocales),
+    __ROUTE_NAME_SEPARATOR__: JSON.stringify(options.routesNameSeparator),
+    __ROUTE_NAME_DEFAULT_SUFFIX__: JSON.stringify(options.defaultLocaleRouteNameSuffix),
+    __TRAILING_SLASH__: String(options.trailingSlash),
+    __DEFAULT_DIRECTION__: JSON.stringify(options.defaultDirection),
+    __I18N_CACHE__: String(isCacheEnabled),
+    __I18N_CACHE_LIFETIME__: JSON.stringify(cacheLifetime),
+    __I18N_FULL_STATIC__: String(fullStatic),
+    __I18N_STRIP_UNUSED__: JSON.stringify(!!options.experimental.stripMessagesPayload),
+    __I18N_PRELOAD__: JSON.stringify(!!options.experimental.preload),
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
+    __I18N_ROUTING__: JSON.stringify(nuxt.options.pages.toString() && options.strategy !== 'no_prefix'),
+    __I18N_STRICT_SEO__: JSON.stringify(!!options.experimental.strictSeo)
   }
+
+  if (nuxt.options.ssr || !server) {
+    return {
+      ...common,
+      __VUE_I18N_LEGACY_API__: String(!(options.bundle?.compositionOnly ?? true)),
+      __VUE_I18N_FULL_INSTALL__: String(options.bundle?.fullInstall ?? true),
+      __INTLIFY_PROD_DEVTOOLS__: 'false',
+      __INTLIFY_DROP_MESSAGE_COMPILER__: String(options.bundle?.dropMessageCompiler ?? false)
+    }
+  }
+
+  return common
 }

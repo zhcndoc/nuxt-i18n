@@ -2,14 +2,14 @@ import { resolveLocales } from '../src/utils'
 import { parseSegment, getRoutePath } from '../src/utils/route-parsing'
 import type { LocaleObject } from '../src/types'
 import { vi, beforeEach, afterEach, test, expect, beforeAll } from 'vitest'
-import { initParser } from '../src/utils/parse'
 
 vi.mock('pathe', async () => {
   const mod = await vi.importActual<typeof import('pathe')>('pathe')
   return { ...mod, resolve: vi.fn((...args: string[]) => mod.normalize(args.join('/'))) }
 })
 
-vi.mock('@nuxt/kit', () => {
+vi.mock('@nuxt/kit', async importOriginal => {
+  const actual = await importOriginal()
   const resolveFiles = () => {
     return [
       ['en', 'json'],
@@ -19,14 +19,14 @@ vi.mock('@nuxt/kit', () => {
       ['nl', 'js']
     ].map(pair => `/path/to/project/locales/${pair[0]}.${pair[1]}`)
   }
-  return { resolveFiles }
+  return {
+    // @ts-expect-error import actual
+    ...actual,
+    resolveFiles
+  }
 })
 
 vi.mock('node:fs')
-
-beforeAll(async () => {
-  await initParser()
-})
 
 beforeEach(async () => {
   vi.spyOn(await import('node:fs'), 'readFileSync').mockReturnValue(
@@ -61,7 +61,7 @@ test('resolveLocales', async () => {
       files: ['nl.js']
     }
   ] as LocaleObject[]
-  const resolvedLocales = await resolveLocales('/path/to/project', locales, '/path/to/project/.nuxt')
+  const resolvedLocales = await resolveLocales('/path/to/project', locales)
   expect(resolvedLocales).toMatchInlineSnapshot(`
     [
       {
@@ -73,7 +73,6 @@ test('resolveLocales', async () => {
               "path": "en.json",
             },
             "hash": "5c407b7f",
-            "loadPath": "../en.json",
             "path": "/path/to/project/en.json",
             "type": "static",
           },
@@ -88,7 +87,6 @@ test('resolveLocales', async () => {
               "path": "ja.json",
             },
             "hash": "0e1b8bd4",
-            "loadPath": "../ja.json",
             "path": "/path/to/project/ja.json",
             "type": "static",
           },
@@ -103,7 +101,6 @@ test('resolveLocales', async () => {
               "path": "es.json",
             },
             "hash": "c78280fb",
-            "loadPath": "../es.json",
             "path": "/path/to/project/es.json",
             "type": "static",
           },
@@ -118,7 +115,6 @@ test('resolveLocales', async () => {
               "path": "es.json",
             },
             "hash": "c78280fb",
-            "loadPath": "../es.json",
             "path": "/path/to/project/es.json",
             "type": "static",
           },
@@ -128,7 +124,6 @@ test('resolveLocales', async () => {
               "path": "es-AR.json",
             },
             "hash": "65220c0a",
-            "loadPath": "../es-AR.json",
             "path": "/path/to/project/es-AR.json",
             "type": "static",
           },
@@ -143,7 +138,6 @@ test('resolveLocales', async () => {
               "path": "nl.js",
             },
             "hash": "b7971e5b",
-            "loadPath": "../nl.js",
             "path": "/path/to/project/nl.js",
             "type": "dynamic",
           },

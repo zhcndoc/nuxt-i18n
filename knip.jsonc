@@ -7,12 +7,15 @@
         "src/module.ts",
         "src/runtime/{plugins,components,composables}/**",
         "src/runtime/server/**",
-        "scripts/*"
+        "src/runtime/kit/**",
+        "scripts/*",
+        "specs/utils/nitro-plugin.ts"
       ],
       "ignoreUnresolved": [
         // virtuals
         "#nuxt-i18n/*",
-        "#internal/i18n*"
+        "#internal/i18n*",
+        "#internal/nuxt.config.mjs"
       ],
       "ignoreDependencies": [
         // pre-commit

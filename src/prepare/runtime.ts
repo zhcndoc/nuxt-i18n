@@ -1,26 +1,28 @@
 import type { Nuxt } from '@nuxt/schema'
 import type { I18nNuxtContext } from '../context'
-import { assign } from '@intlify/shared'
 import { addPlugin, addTemplate, addTypeTemplate, addVitePlugin, useNitro } from '@nuxt/kit'
 import { generateTemplateNuxtI18nOptions } from '../template'
-import { generateI18nTypes, generateLoaderOptions, simplifyLocaleOptions } from '../gen'
+import { generateI18nTypes, generateLoaderOptions } from '../gen'
 import { NUXT_I18N_TEMPLATE_OPTIONS_KEY } from '../constants'
 
 export function prepareRuntime(ctx: I18nNuxtContext, nuxt: Nuxt) {
   const { options, resolver } = ctx
   // for core plugin
   addPlugin(resolver.resolve('./runtime/plugins/i18n'))
+  addPlugin(resolver.resolve('./runtime/plugins/preload'))
   addPlugin(resolver.resolve('./runtime/plugins/route-locale-detect'))
   addPlugin(resolver.resolve('./runtime/plugins/ssg-detect'))
   addPlugin(resolver.resolve('./runtime/plugins/switch-locale-path-ssr'))
 
   // for composables
   nuxt.options.alias['#i18n'] = resolver.resolve('./runtime/composables/index')
+  nuxt.options.alias['#i18n-kit'] = resolver.resolve('./runtime/kit')
   nuxt.options.alias['#internal-i18n-types'] = resolver.resolve('./types')
   nuxt.options.build.transpile.push('#i18n')
+  nuxt.options.build.transpile.push('#i18n-kit')
   nuxt.options.build.transpile.push('#internal-i18n-types')
 
-  if (ctx.isDev && options.experimental.hmr) {
+  if (nuxt.options.dev && options.hmr) {
     addVitePlugin({
       name: 'i18n:options-hmr',
       configureServer(server) {
@@ -39,11 +41,8 @@ export function prepareRuntime(ctx: I18nNuxtContext, nuxt: Nuxt) {
     })
   }
 
-  nuxt.options.runtimeConfig.public.i18n.locales = simplifyLocaleOptions(nuxt, assign({}, options))
-
   addTemplate({
     filename: NUXT_I18N_TEMPLATE_OPTIONS_KEY,
-    write: true,
     getContents: () => generateTemplateNuxtI18nOptions(ctx, generateLoaderOptions(ctx, nuxt))
   })
 

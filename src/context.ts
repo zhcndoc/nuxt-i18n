@@ -1,56 +1,41 @@
+import { createResolver } from '@nuxt/kit'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'pathe'
 import type { Resolver } from '@nuxt/kit'
-import type { LocaleInfo, LocaleObject, NuxtI18nOptions, VueI18nConfigPathInfo } from './types'
-import type { Nuxt } from '@nuxt/schema'
-import { createResolver, useLogger } from '@nuxt/kit'
-import { NUXT_I18N_MODULE_ID } from './constants'
-import createDebug from 'debug'
+import type { FileMeta, LocaleInfo, LocaleObject, NuxtI18nOptions } from './types'
 
 export interface I18nNuxtContext {
   resolver: Resolver
-  logger: ReturnType<(typeof import('@nuxt/kit'))['useLogger']>
-  debug: ReturnType<typeof import('debug')>
   userOptions: NuxtI18nOptions
   options: Required<NuxtI18nOptions>
-  isDev: boolean
-  isSSR: boolean
-  isPrepare: boolean
-  isSSG: boolean
-  isBuild: boolean
-  isTest: boolean
-  // serialized boolean value
-  hasPages: string
   normalizedLocales: LocaleObject<string>[]
   localeCodes: string[]
   localeInfo: LocaleInfo[]
-  vueI18nConfigPaths: Required<VueI18nConfigPathInfo>[]
+  vueI18nConfigPaths: FileMeta[]
+  distDir: string
+  runtimeDir: string
+  fullStatic: boolean
+  i18nModules: { langDir: string; locales: string[] | LocaleObject[] }[]
 }
 
-const debug = createDebug('@nuxtjs/i18n:context')
 const resolver = createResolver(import.meta.url)
+const distDir = dirname(fileURLToPath(import.meta.url))
+const runtimeDir = fileURLToPath(new URL('./runtime', import.meta.url))
 
-export function createContext(userOptions: NuxtI18nOptions, nuxt: Nuxt): I18nNuxtContext {
+export function createContext(userOptions: NuxtI18nOptions): I18nNuxtContext {
   const options = userOptions as Required<NuxtI18nOptions>
 
   return {
-    resolver,
-    logger: useLogger(NUXT_I18N_MODULE_ID),
-    debug,
-    userOptions,
     options,
-    isDev: nuxt.options.dev,
-    isSSR: nuxt.options.ssr,
-    isPrepare: nuxt.options._prepare,
-    isSSG: nuxt.options._generate,
-    isBuild: nuxt.options._build,
-    isTest: nuxt.options.test,
-    // pages is initially undefined - has correct value when writing i18n.options template
-    get hasPages() {
-      // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      return nuxt.options.pages.toString()
-    },
-    normalizedLocales: undefined!,
-    localeCodes: undefined!,
+    resolver,
+    userOptions,
+    distDir,
+    runtimeDir,
     localeInfo: undefined!,
-    vueI18nConfigPaths: undefined!
+    localeCodes: undefined!,
+    normalizedLocales: undefined!,
+    vueI18nConfigPaths: undefined!,
+    fullStatic: undefined!,
+    i18nModules: []
   }
 }

@@ -1,11 +1,9 @@
 import type { I18nNuxtContext } from '../context'
 import type { Nuxt } from '@nuxt/schema'
-import { applyOptionOverrides, formatMessage } from '../utils'
+import { logger } from '../utils'
 import { checkLayerOptions } from '../layers'
 
-export function prepareOptions({ debug, logger, options }: I18nNuxtContext, nuxt: Nuxt) {
-  applyOptionOverrides(options, nuxt)
-  debug('options', options)
+export function prepareOptions({ options }: I18nNuxtContext, nuxt: Nuxt) {
   checkLayerOptions(options, nuxt)
 
   /**
@@ -13,22 +11,21 @@ export function prepareOptions({ debug, logger, options }: I18nNuxtContext, nuxt
    */
   if (options.bundle.compositionOnly && options.types === 'legacy') {
     throw new Error(
-      formatMessage(
-        '`bundle.compositionOnly` option and `types` option are conflicting: ' +
-          `bundle.compositionOnly: ${options.bundle.compositionOnly}, types: ${JSON.stringify(options.types)}`
-      )
+      '[nuxt-i18n] `bundle.compositionOnly` option and `types` option are conflicting: ' +
+        `bundle.compositionOnly: ${options.bundle.compositionOnly}, types: ${JSON.stringify(options.types)}`
     )
   }
 
-  if (!nuxt.options?._prepare && !nuxt.options?.test && options.bundle.optimizeTranslationDirective == null) {
+  if (nuxt.options.i18n?.autoDeclare && nuxt.options.imports.autoImport === false) {
     logger.warn(
-      '`bundle.optimizeTranslationDirective` is enabled by default, we recommend disabling this feature as it causes issues and will be deprecated in v10.\nExplicitly setting this option to `true` or `false` disables this warning, for more details see: https://github.com/nuxt-modules/i18n/issues/3238#issuecomment-2672492536'
+      'Disabling `autoImports` in Nuxt is not compatible with `autoDeclare`, either enable `autoImports` or disable `autoDeclare`.'
     )
   }
 
-  if (options.experimental.autoImportTranslationFunctions && nuxt.options.imports.autoImport === false) {
+  const strategy = nuxt.options.i18n?.strategy || options.strategy
+  if (strategy.endsWith('_default') && !nuxt.options.i18n?.defaultLocale) {
     logger.warn(
-      'Disabling `autoImports` in Nuxt is not compatible with `experimental.autoImportTranslationFunctions`, either enable `autoImports` or disable `experimental.autoImportTranslationFunctions`.'
+      `The \`${strategy}\` i18n strategy${nuxt.options.i18n?.strategy == null ? ' (used by default)' : ''} needs \`defaultLocale\` to be set.`
     )
   }
 

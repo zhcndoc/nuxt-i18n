@@ -1,20 +1,9 @@
 <script setup lang="ts">
 import { useI18n, useLocaleHead, useLocalePath, useLocaleRoute, useSwitchLocalePath } from '#i18n'
-import {
-  computed,
-  navigateTo,
-  ref,
-  useAppConfig,
-  useAsyncData,
-  useHead,
-  useRoute,
-  useRuntimeConfig,
-  watch
-} from '#imports'
-import LangSwitcher from '../components/LangSwitcher.vue'
+import { computed, navigateTo, ref, useAppConfig, useAsyncData, useHead, watch } from '#imports'
 import LocalScope from '../components/LocalScope.vue'
 
-const { t, locale, locales, localeProperties, finalizePendingLocaleChange } = useI18n()
+const { t, locale, locales, localeProperties } = useI18n()
 const localePath = useLocalePath()
 const switchLocalePath = useSwitchLocalePath()
 const localeRoute = useLocaleRoute()
@@ -45,23 +34,13 @@ const { data, refresh } = useAsyncData(`home-${locale.value}`, () =>
 watch(locale, () => {
   refresh()
 })
-const route = useRoute()
-route.meta.pageTransition = {
-  name: 'my',
-  mode: 'out-in',
-  onBeforeEnter: async () => {
-    if (useRuntimeConfig().public.i18n.skipSettingLocaleOnNavigate) {
-      await finalizePendingLocaleChange()
-    }
-  }
-}
 // @ts-ignore
 definePageMeta({
   title: 'home',
   alias: ['/aliased-home-path']
 })
 
-const i18nHead = useLocaleHead({ key: 'id', seo: { canonicalQueries: ['page', 'canonical'] } })
+const i18nHead = useLocaleHead({ seo: { canonicalQueries: ['page', 'canonical'] } })
 useHead(() => ({
   htmlAttrs: {
     lang: i18nHead.value.htmlAttrs!.lang
@@ -122,6 +101,9 @@ useHead(() => ({
         </li>
         <li class="path-about">
           <NuxtLink id="link-about" :to="localePath('/about')">{{ $t('about') }}</NuxtLink>
+        </li>
+        <li class="path-about-en">
+          <NuxtLink id="link-about-en" :to="localePath('/about', 'en')">{{ $t('about') }}</NuxtLink>
         </li>
         <li>
           <NuxtLink id="link-post" :to="localePath({ name: 'post-id', params: { id: 'id' } })">Post</NuxtLink>
@@ -187,6 +169,14 @@ useHead(() => ({
         </li>
         <li class="external-url">
           <NuxtLinkLocale :to="'https://nuxt.com/'">Nuxt.com</NuxtLinkLocale>
+        </li>
+        <li class="target-blank-with-locale">
+          <NuxtLinkLocale to="about" locale="fr" target="_blank">About us in French (new tab)</NuxtLinkLocale>
+        </li>
+        <li class="state">
+          <NuxtLinkLocale :to="{ path: '/', query: { foo: 'bar' }, state: { hello: 'world' } }"
+            >Index with state</NuxtLinkLocale
+          >
         </li>
       </ul>
     </section>

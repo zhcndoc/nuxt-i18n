@@ -2,6 +2,7 @@ import i18nModule from './i18n-module'
 
 // https://nuxt.com/docs/guide/directory-structure/nuxt.config
 export default defineNuxtConfig({
+  extends: ['../common'],
   vite: {
     // Prevent reload by optimizing dependency before discovery
     optimizeDeps: {
@@ -23,22 +24,19 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      myKey: 'runtime-config-value'
+      myKey: 'runtime-config-value',
+      noServer: false
     }
   },
   modules: [i18nModule, '@nuxtjs/i18n'],
   i18n: {
-    restructureDir: false,
     baseUrl: 'http://localhost:3000',
-    // langDir: 'lang',
-    // defaultLocale: 'fr',
     detectBrowserLanguage: false,
     compilation: {
       strictMessage: false
     },
     defaultLocale: 'en',
     langDir: 'lang',
-    lazy: true,
     locales: [
       {
         code: 'en',

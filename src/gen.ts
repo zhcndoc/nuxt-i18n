@@ -1,48 +1,30 @@
-import createDebug from 'debug'
-import { assign, isString } from '@intlify/shared'
-import { genImport, genDynamicImport, genSafeVariableName, genString } from 'knitwork'
+import { isString } from '@intlify/shared'
+import { genDynamicImport, genSafeVariableName, genString } from 'knitwork'
 import { resolve, relative, join, basename } from 'pathe'
-import { distDir, runtimeDir } from './dirs'
-import { getLayerI18n, getLocaleFiles } from './utils'
+import { getLayerI18n } from './utils'
 import { asI18nVirtual } from './transform/utils'
+import { resolveModule } from '@nuxt/kit'
 
 import type { Nuxt } from '@nuxt/schema'
-import type { NuxtI18nOptions, LocaleObject, ExperimentalFeatures } from './types'
+import type { LocaleObject } from './types'
 import type { Locale } from 'vue-i18n'
 import type { I18nNuxtContext } from './context'
 
-const debug = createDebug('@nuxtjs/i18n:gen')
-
-function formatLocaleFiles(
-  nuxt: Nuxt,
-  locale: LocaleObject,
-  format: ExperimentalFeatures['generatedLocaleFilePathFormat'] = 'absolute'
-) {
-  if (format == 'off') {
-    delete locale.files
-  } else if (format === 'relative') {
-    locale.files = getLocaleFiles(locale).map(x => assign(x, { path: relative(nuxt.options.rootDir, x.path) }))
-  }
+function stripLocaleFiles(locale: LocaleObject) {
+  delete locale.files
   delete locale.file
   return locale
 }
 
-export function simplifyLocaleOptions(
-  nuxt: Nuxt,
-  options: Pick<NuxtI18nOptions, 'locales' | 'experimental' | 'i18nModules'>
-) {
+export function simplifyLocaleOptions(ctx: I18nNuxtContext, nuxt: Nuxt) {
   const isLocaleObjectsArray = (locales?: Locale[] | LocaleObject[]) => locales?.some(x => !isString(x))
 
   const hasLocaleObjects =
     nuxt.options._layers.some(layer => isLocaleObjectsArray(getLayerI18n(layer)?.locales)) ||
-    options?.i18nModules?.some(module => isLocaleObjectsArray(module?.locales))
+    ctx.i18nModules.some(module => isLocaleObjectsArray(module?.locales))
 
-  const locales = (options.locales ?? []) as LocaleObject[]
-
-  return locales.map(locale => {
-    if (!hasLocaleObjects) return locale.code
-    return formatLocaleFiles(nuxt, locale, options.experimental?.generatedLocaleFilePathFormat)
-  })
+  const locales = (ctx.options.locales ?? []) as LocaleObject[]
+  return locales.map(locale => (!hasLocaleObjects ? locale.code : stripLocaleFiles(locale)))
 }
 
 type LocaleLoaderData = {
@@ -50,16 +32,12 @@ type LocaleLoaderData = {
   load: string
   relative: string
   cache: boolean
-  specifier: string
-  importString: string
 }
 
 export function generateLoaderOptions(
   ctx: Pick<I18nNuxtContext, 'options' | 'vueI18nConfigPaths' | 'localeInfo' | 'normalizedLocales'>,
   nuxt: Nuxt
 ) {
-  debug('generateLoaderOptions: lazy', ctx.options.lazy)
-
   /**
    * Prepare locale file imports
    */
@@ -69,17 +47,12 @@ export function generateLoaderOptions(
     localeLoaders[locale.code] ??= []
     for (const meta of locale.meta) {
       if (!importMapper.has(meta.path)) {
-        const key = `locale_${genSafeVariableName(basename(meta.path))}_${meta.hash}`
-        const specifier = asI18nVirtual(meta.hash)
+        const key = genString(`locale_${genSafeVariableName(basename(meta.path))}_${meta.hash}`)
         importMapper.set(meta.path, {
-          specifier,
-          key: genString(key),
-          relative: meta.loadPath,
+          key,
+          relative: relative(nuxt.options.buildDir, meta.path),
           cache: meta.file.cache ?? true,
-          load: ctx.options.lazy
-            ? genDynamicImport(specifier, { comment: `webpackChunkName: ${genString(key)}` })
-            : `() => Promise.resolve(${key})`,
-          importString: genImport(specifier, key)
+          load: genDynamicImport(asI18nVirtual(meta.hash), { comment: `webpackChunkName: ${key}` })
         })
       }
       localeLoaders[locale.code].push(importMapper.get(meta.path)!)
@@ -92,37 +65,19 @@ export function generateLoaderOptions(
   const vueI18nConfigs = []
   for (let i = ctx.vueI18nConfigPaths.length - 1; i >= 0; i--) {
     const config = ctx.vueI18nConfigPaths[i]
-    const key = genString(`config_${genSafeVariableName(basename(config.meta.path))}_${config.meta.hash}`)
-    const specifier = asI18nVirtual(config.meta.hash)
-    const importer = genDynamicImport(specifier, { comment: `webpackChunkName: ${key}` })
-    vueI18nConfigs.push({ specifier, importer, relative: config.meta.loadPath })
-  }
-
-  const pathFormat = ctx.options.experimental?.generatedLocaleFilePathFormat
-  const nuxtI18nOptions = assign({}, ctx.options, {
-    locales: simplifyLocaleOptions(nuxt, ctx.options),
-    i18nModules: (ctx.options.i18nModules ?? []).map(x => {
-      if (pathFormat === 'absolute' || x.langDir == null) return x
-      if (pathFormat === 'off') {
-        delete x.langDir
-      } else {
-        x.langDir = relative(nuxt.options.rootDir, x.langDir)
-      }
-      x.locales = (x.locales ?? []).map(locale =>
-        isString(locale) ? locale : formatLocaleFiles(nuxt, locale, pathFormat)
-      ) as string[] | LocaleObject[]
-      return x
+    const key = genString(`config_${genSafeVariableName(basename(config.path))}_${config.hash}`)
+    vueI18nConfigs.push({
+      importer: genDynamicImport(asI18nVirtual(config.hash), { comment: `webpackChunkName: ${key}` }),
+      relative: relative(nuxt.options.buildDir, config.path)
     })
-  })
-  // @ts-expect-error is required
-  delete nuxtI18nOptions.vueI18n
+  }
 
   /**
    * Process locale file paths in `normalizedLocales`
    */
-  const normalizedLocales = ctx.normalizedLocales.map(x => formatLocaleFiles(nuxt, x, pathFormat))
+  const normalizedLocales = ctx.normalizedLocales.map(x => stripLocaleFiles(x))
 
-  return { localeLoaders, nuxtI18nOptions, vueI18nConfigs, normalizedLocales }
+  return { localeLoaders, vueI18nConfigs, normalizedLocales }
 }
 
 /**
@@ -211,13 +166,12 @@ declare module 'vue-router' {
   }
 }`
 
-export function generateI18nTypes(nuxt: Nuxt, { userOptions: options, normalizedLocales }: I18nNuxtContext) {
-  const vueI18nTypes = options.types === 'legacy' ? ['VueI18n'] : ['ExportedGlobalComposer', 'Composer']
-  const generatedLocales = simplifyLocaleOptions(nuxt, options)
-  const resolvedLocaleType = isString(generatedLocales) ? 'Locale[]' : 'LocaleObject[]'
-  const narrowedLocaleType = normalizedLocales.map(x => JSON.stringify(x.code)).join(' | ') || 'string'
-
-  const i18nType = `${vueI18nTypes.join(' & ')} & NuxtI18nRoutingCustomProperties<${resolvedLocaleType}>`
+export function generateI18nTypes(nuxt: Nuxt, ctx: I18nNuxtContext) {
+  const legacyTypes = ctx.userOptions.types === 'legacy'
+  const i18nType = legacyTypes ? 'VueI18n' : 'Composer'
+  const generatedLocales = simplifyLocaleOptions(ctx, nuxt)
+  const resolvedLocaleType = isString(generatedLocales.at(0)) ? 'Locale[]' : 'LocaleObject[]'
+  const narrowedLocaleType = ctx.localeCodes.map(x => JSON.stringify(x)).join(' | ') || 'string'
 
   const globalTranslationTypes = `
 declare global {
@@ -231,39 +185,55 @@ declare global {
 
   // prettier-ignore
   return `// Generated by @nuxtjs/i18n
-import type { ${vueI18nTypes.join(', ')} } from 'vue-i18n'
-import type { NuxtI18nRoutingCustomProperties, ComposerCustomProperties } from '${relative(
+import type { ${i18nType} } from 'vue-i18n'
+import type { ComposerCustomProperties } from '${relative(
     join(nuxt.options.buildDir, 'types'),
-    resolve(runtimeDir, 'types.ts')
+    resolve(ctx.runtimeDir, 'types.ts')
   )}'
 import type { Strategies, Directions, LocaleObject } from '${relative(
     join(nuxt.options.buildDir, 'types'),
-    resolve(distDir, 'types.d.ts')
+    resolve(ctx.distDir, 'types.d.mts')
   )}'
+import type { I18nRoute } from '#i18n'
 
 declare module 'vue-i18n' {
   interface ComposerCustom extends ComposerCustomProperties<${resolvedLocaleType}> {}
-  interface ExportedGlobalComposer extends NuxtI18nRoutingCustomProperties<${resolvedLocaleType}> {}
-  interface VueI18n extends NuxtI18nRoutingCustomProperties<${resolvedLocaleType}> {}
+  interface ExportedGlobalComposer extends ComposerCustomProperties<${resolvedLocaleType}> {}
+  interface VueI18n extends ComposerCustomProperties<${resolvedLocaleType}> {}
 }
 
 declare module '@intlify/core-base' {
   // generated based on configured locales
   interface GeneratedTypeConfig { 
     locale: ${narrowedLocaleType}
+    legacy: ${legacyTypes}
   }
 }
 
+interface I18nMeta {
+  i18n?: I18nRoute | false
+}
 
 declare module '#app' {
   interface NuxtApp {
     $i18n: ${i18nType}
   }
+  interface PageMeta extends I18nMeta {}
+}
+
+
+// NOTE: this is a workaround for Nuxt <3.16.2
+declare module '${resolve(resolveModule('nuxt'), '../pages/runtime/composables')}' {
+  interface PageMeta extends I18nMeta {}
+}
+
+declare module 'vue-router' {
+  interface RouteMeta extends I18nMeta {}
 }
 
 ${typedRouterAugmentations}
 
-${(options.experimental?.autoImportTranslationFunctions && globalTranslationTypes) || ''}
+${(ctx.userOptions.autoDeclare && globalTranslationTypes) || ''}
 
 export {}`
 }

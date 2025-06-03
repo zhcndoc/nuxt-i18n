@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { setup, url, fetch } from '../utils'
-import { getText, getData, renderPage, waitForURL, startServerWithRuntimeConfig, gotoPath } from '../helper'
+import { renderPage, setServerRuntimeConfig, gotoPath } from '../helper'
 
 import type { Response } from 'playwright-core'
 
@@ -12,9 +12,7 @@ await setup({
   nuxtConfig: {
     i18n: {
       strategy: 'prefix',
-      defaultLocale: 'en',
-      // fixture uses `false` which cannot be overwritten using runtimeConfig
-      detectBrowserLanguage: {}
+      defaultLocale: 'en'
     }
   }
 })
@@ -22,11 +20,14 @@ await setup({
 describe('strategy: prefix', async () => {
   beforeEach(async () => {
     // use original fixture `detectBrowserLanguage` value as default for tests, overwrite here needed
-    await startServerWithRuntimeConfig({
-      public: {
-        i18n: { detectBrowserLanguage: false }
-      }
-    })
+    await setServerRuntimeConfig(
+      {
+        public: {
+          i18n: { detectBrowserLanguage: false }
+        }
+      },
+      true
+    )
   })
 
   test.each([
@@ -43,42 +44,42 @@ describe('strategy: prefix', async () => {
     const { page } = await renderPage('/en')
 
     // `en` rendering
-    expect(await getText(page, '#home-header')).toEqual('Homepage')
-    expect(await getText(page, 'title')).toEqual('Homepage')
-    expect(await getText(page, '#link-about')).toEqual('About us')
+    expect(await page.locator('#home-header').innerText()).toEqual('Homepage')
+    expect(await page.locator('title').innerText()).toEqual('Homepage')
+    expect(await page.locator('#link-about').innerText()).toEqual('About us')
 
     // lang switcher rendering
-    expect(await getText(page, '#lang-switcher-with-nuxt-link a')).toEqual('Français')
-    expect(await getText(page, '#set-locale-link-fr')).toEqual('Français')
+    expect(await page.locator('#lang-switcher-with-nuxt-link .switch-to-fr').innerText()).toEqual('Français')
+    expect(await page.locator('#set-locale-link-fr').innerText()).toEqual('Français')
 
     // page path
-    expect(await getData(page, '#home-use-async-data')).toMatchObject({ aboutPath: '/en/about' })
-    expect(await getText(page, '#route-path')).toEqual('route: /en')
-    expect(await page.getAttribute('#lang-switcher-with-nuxt-link a', 'href')).toEqual('/fr')
+    expect(JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/en/about' })
+    expect(await page.locator('#route-path').innerText()).toEqual('route: /en')
+    expect(await page.getAttribute('#lang-switcher-with-nuxt-link .switch-to-fr', 'href')).toEqual('/fr')
 
     // current locale
-    expect(await getText(page, '#lang-switcher-current-locale code')).toEqual('en')
+    expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('en')
   })
 
   test('can access to prefix locale: /fr', async () => {
     const { page } = await renderPage('/fr')
 
     // `fr` rendering
-    expect(await getText(page, '#home-header')).toEqual('Accueil')
-    expect(await getText(page, 'title')).toEqual('Accueil')
-    expect(await getText(page, '#link-about')).toEqual('À propos')
+    expect(await page.locator('#home-header').innerText()).toEqual('Accueil')
+    expect(await page.locator('title').innerText()).toEqual('Accueil')
+    expect(await page.locator('#link-about').innerText()).toEqual('À propos')
 
     // lang switcher rendering
-    expect(await getText(page, '#lang-switcher-with-nuxt-link a')).toEqual('English')
-    expect(await getText(page, '#set-locale-link-en')).toEqual('English')
+    expect(await page.locator('#lang-switcher-with-nuxt-link .switch-to-en').innerText()).toEqual('English')
+    expect(await page.locator('#set-locale-link-en').innerText()).toEqual('English')
 
     // page path
-    expect(await getData(page, '#home-use-async-data')).toMatchObject({ aboutPath: '/fr/about' })
-    expect(await getText(page, '#route-path')).toEqual('route: /fr')
-    expect(await page.getAttribute('#lang-switcher-with-nuxt-link a', 'href')).toEqual('/en')
+    expect(JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/fr/about' })
+    expect(await page.locator('#route-path').innerText()).toEqual('route: /fr')
+    expect(await page.getAttribute('#lang-switcher-with-nuxt-link .switch-to-en', 'href')).toEqual('/en')
 
     // current locale
-    expect(await getText(page, '#lang-switcher-current-locale code')).toEqual('fr')
+    expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
   })
 
   test('cannot access to not defined locale: /ja', async () => {
@@ -98,29 +99,29 @@ describe('strategy: prefix', async () => {
     const { page } = await renderPage('/en')
 
     // click `fr` lang switch link
-    await page.locator('#lang-switcher-with-nuxt-link a').click()
-    await waitForURL(page, '/fr')
+    await page.locator('#lang-switcher-with-nuxt-link .switch-to-fr').clickNavigate()
+    await page.waitForURL(url('/fr'))
 
     // `fr` rendering
-    expect(await getText(page, '#home-header')).toEqual('Accueil')
-    expect(await getText(page, 'title')).toEqual('Accueil')
-    expect(await getText(page, '#link-about')).toEqual('À propos')
+    expect(await page.locator('#home-header').innerText()).toEqual('Accueil')
+    expect(await page.locator('title').innerText()).toEqual('Accueil')
+    expect(await page.locator('#link-about').innerText()).toEqual('À propos')
 
     // lang switcher rendering
-    expect(await getText(page, '#lang-switcher-with-nuxt-link a')).toEqual('English')
-    expect(await getText(page, '#set-locale-link-en')).toEqual('English')
+    expect(await page.locator('#lang-switcher-with-nuxt-link .switch-to-en').innerText()).toEqual('English')
+    expect(await page.locator('#set-locale-link-en').innerText()).toEqual('English')
 
     // page path
-    expect(await getData(page, '#home-use-async-data')).toMatchObject({ aboutPath: '/fr/about' })
-    expect(await getText(page, '#route-path')).toEqual('route: /fr')
-    expect(await page.getAttribute('#lang-switcher-with-nuxt-link a', 'href')).toEqual('/en')
+    expect(JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/fr/about' })
+    expect(await page.locator('#route-path').innerText()).toEqual('route: /fr')
+    expect(await page.getAttribute('#lang-switcher-with-nuxt-link .switch-to-en', 'href')).toEqual('/en')
 
     // current locale
-    expect(await getText(page, '#lang-switcher-current-locale code')).toEqual('fr')
+    expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
   })
 
   test('(#1889) navigation to page with `defineI18nRoute(false)`', async () => {
-    const restore = await startServerWithRuntimeConfig({
+    await setServerRuntimeConfig({
       public: {
         i18n: {
           detectBrowserLanguage: {
@@ -133,39 +134,37 @@ describe('strategy: prefix', async () => {
     })
 
     const { page } = await renderPage('/', { locale: 'en' })
-    await waitForURL(page, '/en')
+    await page.waitForURL(url('/en'))
 
     // switch 'fr' locale
-    await page.locator('#lang-switcher-with-set-locale a').click()
-    await waitForURL(page, '/fr')
-    expect(await getText(page, '#home-header')).toEqual('Accueil')
+    await page.locator('#lang-switcher-with-nuxt-link .switch-to-fr').clickNavigate()
+    await page.waitForURL(url('/fr'))
+    expect(await page.locator('#home-header').innerText()).toEqual('Accueil')
 
     // navigate to disabled route
-    await page.locator('#link-define-i18n-route-false').click()
-    await waitForURL(page, '/define-i18n-route-false')
+    await page.locator('#link-define-i18n-route-false').clickNavigate()
+    await page.waitForURL(url('/define-i18n-route-false'))
 
-    expect(await getText(page, '#disable-route-text')).toEqual('Page with disabled localized route')
+    expect(await page.locator('#disable-route-text').innerText()).toEqual('Page with disabled localized route')
 
     // back to home
-    await page.locator('#goto-home').click()
-    expect(await getText(page, '#home-header')).toEqual('Accueil')
+    await page.locator('#goto-home').clickNavigate()
+    expect(await page.locator('#home-header').innerText()).toEqual('Accueil')
 
     // does not redirect to prefixed route for routes with disabled localization
     await page.goto(url('/ignore-routes/disable'))
-    await waitForURL(page, '/ignore-routes/disable')
-
-    await restore()
+    await page.waitForURL(url('/ignore-routes/disable'))
   })
 
   test('should not transform `defineI18nRoute()` inside template', async () => {
     const { page } = await renderPage('/', { locale: 'en' })
-    await waitForURL(page, '/en')
+    await page.waitForURL(url('/en'))
 
-    expect(await getText(page, '#link-define-i18n-route-false')).toEqual('go to defineI18nRoute(false)')
+    expect(await page.locator('#link-define-i18n-route-false').innerText()).toEqual('go to defineI18nRoute(false)')
   })
 
   test("(#2132) should redirect on root url with `redirectOn: 'no prefix'`", async () => {
-    const restore = await startServerWithRuntimeConfig({
+    await setServerRuntimeConfig({
       public: {
         i18n: {
           detectBrowserLanguage: {
@@ -179,18 +178,16 @@ describe('strategy: prefix', async () => {
     })
 
     const { page } = await renderPage('/', { locale: 'fr' })
-    expect(await getText(page, '#home-header')).toEqual('Accueil')
+    expect(await page.locator('#home-header').innerText()).toEqual('Accueil')
 
     await gotoPath(page, '/en')
-    expect(await getText(page, '#home-header')).toEqual('Homepage')
-
-    await restore()
+    expect(await page.locator('#home-header').innerText()).toEqual('Homepage')
   })
 
   test('(#2020) pass query parameter', async () => {
     const { page } = await renderPage('/')
 
-    expect(await getText(page, '#issue-2020-existing')).toBe('/en/test-route?foo=bar')
-    expect(await getText(page, '#issue-2020-nonexistent')).toBe('/i-dont-exist?foo=bar')
+    expect(await page.locator('#issue-2020-existing').innerText()).toBe('/en/test-route?foo=bar')
+    expect(await page.locator('#issue-2020-nonexistent').innerText()).toBe('/i-dont-exist?foo=bar')
   })
 })

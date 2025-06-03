@@ -8,9 +8,7 @@ const skipSettingLocale = useRuntimeConfig().public.i18n.skipSettingLocaleOnNavi
 const pageTransition = {
   name: 'my',
   mode: 'out-in',
-  onBeforeEnter: async () => {
-    await finalizePendingLocaleChange()
-  }
+  onBeforeEnter: async () => await finalizePendingLocaleChange()
 }
 </script>
 
@@ -31,5 +29,12 @@ section {
 .my-enter,
 .my-leave-active {
   opacity: 0;
+}
+
+a[data-i18n-disabled] {
+  /* display: none; */
+  color: #d54141;
+  pointer-events: none;
+  user-select: none;
 }
 </style>

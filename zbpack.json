@@ -1,7 +1,0 @@
-{
-  "app_dir": "/",
-  "build_command": "NITRO_PRESET=static pnpm -w run docs:generate",
-  "cache_dependencies": false,
-  "install_command": "pnpm install",
-  "output_dir": "/docs/dist"
-}

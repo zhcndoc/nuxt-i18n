@@ -3,8 +3,9 @@ packages:
   - playground
   - specs/fixtures/*
 onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@tailwindcss/oxide'
   - better-sqlite3
-  - sharp
-ignoredBuiltDependencies:
   - esbuild
+  - sharp
   - vue-demi

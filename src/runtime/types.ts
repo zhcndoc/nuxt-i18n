@@ -1,11 +1,18 @@
-import type { NuxtApp } from '#app'
 import type { ComputedRef } from 'vue'
 import type { Directions, LocaleObject, Strategies } from '#internal-i18n-types'
-import type { I18n, Locale, Composer, VueI18n, ExportedGlobalComposer } from 'vue-i18n'
-import type { RouteLocationAsRelative, RouteLocationNormalizedGeneric, RouteRecordNameGeneric } from 'vue-router'
+import type { Locale, Composer, VueI18n, ExportedGlobalComposer } from 'vue-i18n'
+import type {
+  HistoryState,
+  RouteLocationAsRelative,
+  RouteLocationNormalizedGeneric,
+  RouteRecordNameGeneric
+} from 'vue-router'
+import type { ComposableContext } from './utils'
+import type { NuxtI18nContext } from './context'
 
 export type CompatRoute = Omit<RouteLocationNormalizedGeneric, 'name'> & {
   name: RouteRecordNameGeneric | null
+  state?: HistoryState
 }
 
 export type RouteLocationGenericPath = Omit<RouteLocationAsRelative, 'path' | 'name'> & {
@@ -13,37 +20,30 @@ export type RouteLocationGenericPath = Omit<RouteLocationAsRelative, 'path' | 'n
   name?: RouteLocationAsRelative['name'] | null
 }
 
-export type I18nRouteMeta = Partial<Record<Locale, Record<string, unknown>>>
+export type I18nRouteMeta = Partial<Record<Locale, false | Record<string, unknown>>>
 
 /**
- * Called before the app's locale is switched.
- *
- * @remarks
- * Can be used to override the new locale by returning a new locale code.
- *
- * @param oldLocale - The app's locale before the switch.
- * @param newLocale - The app's locale after the switch.
- * @param initialSetup - Set to `true` if it's the initial locale switch that triggers on app load. It's a special case since the locale is not technically set yet so we're switching from no locale to locale.
- * @param context - the Nuxt app instance.
- *
- * @returns The new locale to switch, or `undefined` to keep the new locale.
+ * @template ConfiguredLocaleType - The type of the locales configuration. Can be an array of string codes or an array of {@link LocaleObject}.
  */
-type BeforeLanguageSwitchHandler = (
-  oldLocale: Locale,
-  newLocale: Locale,
-  initialSetup: boolean,
-  context: NuxtApp
-) => Promise<Locale | void>
-
-/**
- * Called after the app's locale is switched.
- *
- * @param oldLocale - The app's locale before the switch
- * @param newLocale - The app's locale after the switch.
- */
-type LanguageSwitchedHandler = (oldLocale: Locale, newLocale: Locale) => Promise<void>
-
-interface SharedProperties {
+export interface ComposerCustomProperties<
+  ConfiguredLocaleType extends Locale[] | LocaleObject[] = Locale[] | LocaleObject[]
+> {
+  /**
+   * List of locales - can either be an array of string codes (e.g. `['en', 'fr']`) or an array of {@link LocaleObject} for more complex configurations
+   */
+  locales: ComputedRef<ConfiguredLocaleType>
+  /**
+   * List of locale codes
+   */
+  localeCodes: ComputedRef<Locale[]>
+  /**
+   * Base URL that is used in generating canonical links
+   */
+  baseUrl: ComputedRef<string>
+  /**
+   * Current locale properties.
+   */
+  localeProperties: ComputedRef<LocaleObject>
   /**
    * Routing strategy.
    */
@@ -99,28 +99,7 @@ interface SharedProperties {
    */
   setLocaleCookie: (locale: Locale) => void
   /**
-   * Called before the app's locale is switched.
-   *
-   * @remarks
-   * Can be used to override the new locale by returning a new locale code.
-   *
-   * @param oldLocale - The app's locale before the switch.
-   * @param newLocale - The app's locale after the switch.
-   * @param initialSetup - Set to `true` if it's the initial locale switch that triggers on app load. It's a special case since the locale is not technically set yet so we're switching from no locale to locale.
-   * @param context - the Nuxt app instance.
-   *
-   * @returns The new locale to switch, or `undefined` to keep the new locale.
-   */
-  onBeforeLanguageSwitch: BeforeLanguageSwitchHandler
-  /**
-   * Called after the app's locale is switched.
-   *
-   * @param oldLocale - The app's locale before the switch
-   * @param newLocale - The app's locale after the switch.
-   */
-  onLanguageSwitched: LanguageSwitchedHandler
-  /**
-   * Switches to the pending locale that would have been set on navigate, but was prevented by the `skipSettingLocaleOnNavigate` option.
+   * Switches locale to the pending locale, used when navigation locale switch is prevented by the `skipSettingLocaleOnNavigate` option.
    */
   finalizePendingLocaleChange: () => Promise<void>
   /**
@@ -131,58 +110,12 @@ interface SharedProperties {
   __extendComposer: (instance: Composer | VueI18n | ExportedGlobalComposer) => void
 }
 
-export interface ComposerCustomProperties<
-  ConfiguredLocaleType extends Locale[] | LocaleObject[] = Locale[] | LocaleObject[]
-> extends SharedProperties {
-  /**
-   * List of locales
-   *
-   * @remarks
-   * Can either be an array of string codes (e.g. `['en', 'fr']`) or an array of {@link LocaleObject} for more complex configurations
-   */
-  locales: ComputedRef<ConfiguredLocaleType>
-  /**
-   * List of locale codes
-   */
-  localeCodes: ComputedRef<Locale[]>
-  /**
-   * Base URL that is used in generating canonical links
-   */
-  baseUrl: ComputedRef<string>
-  /**
-   * Current locale properties.
-   */
-  localeProperties: ComputedRef<LocaleObject>
-}
-
-export interface NuxtI18nRoutingCustomProperties<
-  ConfiguredLocaleType extends Locale[] | LocaleObject[] = Locale[] | LocaleObject[]
-> extends SharedProperties {
-  /**
-   * List of locales
-   *
-   * @remarks
-   * Can either be an array of string codes (e.g. `['en', 'fr']`) or an array of {@link LocaleObject} for more complex configurations
-   */
-  readonly locales: ConfiguredLocaleType
-  /**
-   * List of locale codes
-   */
-  readonly localeCodes: Locale[]
-  /**
-   * Base URL that is used in generating canonical links
-   */
-  baseUrl: string
-  /**
-   * Current locale properties.
-   */
-  localeProperties: LocaleObject
-}
-
 declare module '#app' {
   interface NuxtApp {
     /** @internal */
-    _vueI18n: I18n
+    _nuxtI18nCtx: NuxtI18nContext
+    /** @internal */
+    _nuxtI18n: ComposableContext
   }
 }
 
@@ -190,17 +123,6 @@ declare module 'vue-i18n' {
   interface I18n {
     /** @internal */ __pendingLocale?: string
     /** @internal */ __pendingLocalePromise?: Promise<void>
-    /** @internal */ __firstAccess: boolean
-    /** @internal */ __localeFromRoute: (route: string | CompatRoute) => string
-    /**
-     * Sets the value of the locale property on VueI18n or Composer instance
-     *
-     * This differs from the instance `setLocale` method in that it sets the
-     * locale property directly without triggering other side effects
-     * @internal
-     */
-    __setLocale: (locale: string) => void
-    __resolvePendingLocalePromise?: () => void
-    loadLocaleMessages: (locale: Locale) => Promise<void>
+    /** @internal */ __resolvePendingLocalePromise?: () => Promise<void>
   }
 }

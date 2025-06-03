@@ -54,16 +54,15 @@ npx nuxi@latest module add i18n
   </a>
 </p>
 
-## Nuxt 2
-
-Since Nuxt 2 has reached [its end-of-life (EOL) date](https://v2.nuxt.com/lts/) we are not actively maintaining support for this version, the last version to support Nuxt 2 is `v7`.
-
-The codebase for this version can be found on the [`v7` branch](https://github.com/nuxt-modules/i18n/tree/v7) and its documentation [here](https://i18n.nuxtjs.org/docs/v7).
-
 ## 🔗 Links
 
 - 🔖 [Release notes](./CHANGELOG.md)
 - 👥 [Community](https://discord.nuxtjs.org/) (`🗨️❓ help` support forum)
+- 📖 Documentation
+  - [Version 10.x](https://next.i18n.nuxtjs.org/)
+  - [Version 9.x](https://v9.i18n.nuxtjs.org/)
+  - [Version 8.x](https://v9.i18n.nuxtjs.org/docs/v8)
+  - [Version 7.x (Nuxt 2 - EOL)](https://v9.i18n.nuxtjs.org/docs/v7)
 
 ## ©️ License
 

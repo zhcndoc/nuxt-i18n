@@ -1,27 +1,26 @@
 import type { I18nNuxtContext } from '../context'
 import type { Nuxt } from '@nuxt/schema'
-import { getNormalizedLocales, resolveLocales } from '../utils'
-import { resolveLayerVueI18nConfigInfo } from '../layers'
+import { isString } from '@intlify/shared'
+import { applyLayerOptions, resolveLayerVueI18nConfigInfo } from '../layers'
+import { filterLocales, mergeI18nModules, resolveLocales } from '../utils'
 
 export async function resolveLocaleInfo(ctx: I18nNuxtContext, nuxt: Nuxt) {
-  const { options, debug } = ctx
+  /**
+   * collect and merge locales from layers and module hooks
+   */
+  applyLayerOptions(ctx, nuxt)
+  await mergeI18nModules(ctx, nuxt)
+  filterLocales(ctx, nuxt)
 
   /**
    * resolve locale info
    */
-  const normalizedLocales = getNormalizedLocales(options.locales)
-  const localeCodes = normalizedLocales.map(locale => locale.code)
-  const localeInfo = resolveLocales(nuxt.options.srcDir, normalizedLocales, nuxt.options.buildDir)
-  debug('localeInfo', localeInfo)
+  ctx.normalizedLocales = ctx.options.locales.map(x => (isString(x) ? { code: x, language: x } : x))
+  ctx.localeCodes = ctx.normalizedLocales.map(locale => locale.code)
+  ctx.localeInfo = resolveLocales(nuxt.options.srcDir, ctx.normalizedLocales)
 
   /**
    * resolve vue-i18n config path
    */
-  const vueI18nConfigPaths = await resolveLayerVueI18nConfigInfo(options)
-  debug('VueI18nConfigPaths', vueI18nConfigPaths)
-
-  ctx.normalizedLocales = normalizedLocales
-  ctx.localeCodes = localeCodes
-  ctx.localeInfo = localeInfo
-  ctx.vueI18nConfigPaths = vueI18nConfigPaths
+  ctx.vueI18nConfigPaths = await resolveLayerVueI18nConfigInfo(ctx.options)
 }

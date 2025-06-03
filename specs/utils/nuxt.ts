@@ -4,6 +4,7 @@ import * as _kit from '@nuxt/kit'
 import { useTestContext } from './context'
 import { resolve } from 'node:path'
 import { relative } from 'pathe'
+import { fileURLToPath } from 'node:url'
 
 import type { VitestContext } from './types'
 
@@ -63,6 +64,25 @@ export async function loadFixture(testContext: VitestContext) {
 
     ctx.options.nuxtConfig = defu(ctx.options.nuxtConfig, {
       buildDir,
+      modules: [
+        (_, nuxt) => {
+          /**
+           * Register nitro plugin for IPC communication to update runtime config
+           */
+          nuxt.options.nitro.plugins ||= []
+          nuxt.options.nitro.plugins.push(fileURLToPath(new URL('./nitro-plugin', import.meta.url)))
+          /**
+           * The `overrides` option is only used for testing, it is used to option overrides to the project layer in a fixture.
+           */
+          if (nuxt.options?.i18n?.overrides) {
+            const project = nuxt.options._layers[0]
+            const { overrides, ...mergedOptions } = nuxt.options.i18n
+            delete nuxt.options.i18n.overrides
+            project.config.i18n = defu(overrides, project.config.i18n)
+            Object.assign(nuxt.options.i18n, defu(overrides, mergedOptions))
+          }
+        }
+      ],
       // NOTE: the following code is added for prerender
       _generate: ctx.options.prerender,
       nitro: {

@@ -1,14 +1,14 @@
 import fs from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { localizeRoutes } from '../../src/routing'
 import { getRouteOptionsResolver, analyzeNuxtPages } from '../../src/pages'
-import { getNuxtOptions, stripFilePropertyFromPages } from './utils'
+import { createPageAnalyzeContext, getNuxtOptions, stripFilePropertyFromPages } from './utils'
 import { vi, afterAll, describe, test, expect } from 'vitest'
 
-import type { NuxtPage } from '@nuxt/schema'
-import type { NuxtPageAnalyzeContext, AnalyzedNuxtPageMeta } from '../../src/pages'
 import type { NuxtI18nOptions } from '../../src/types'
-import { getNormalizedLocales } from '../../src/utils'
+import { deepCopy } from '@intlify/shared'
+import { loadNuxt, buildNuxt } from '@nuxt/kit'
+import { NuxtPage } from 'nuxt/schema'
 
 /**
  * NOTE:
@@ -117,20 +117,11 @@ describe.each([
   test(_case, () => {
     vi.spyOn(fs, 'readFileSync').mockReturnValue('')
 
-    const srcDir = '/path/to/nuxt-app'
-    const pagesDir = 'pages'
-    const ctx: NuxtPageAnalyzeContext = {
-      stack: [],
-      srcDir,
-      pagesDir,
-      pages: new Map<NuxtPage, AnalyzedNuxtPageMeta>()
-    }
-
-    analyzeNuxtPages(ctx, pages)
+    const ctx = createPageAnalyzeContext(undefined, undefined, options.pages)
+    analyzeNuxtPages(ctx, ctx.pagesDir, pages)
     const localizedPages = localizeRoutes(pages, {
       ...options,
       includeUnprefixedFallback: false,
-      localeCodes: getNormalizedLocales(options.locales).map(x => x.code),
       optionsResolver: getRouteOptionsResolver(ctx, options as Required<NuxtI18nOptions>)
     } as Parameters<typeof localizeRoutes>[1])
 
@@ -138,7 +129,7 @@ describe.each([
   })
 })
 
-describe.each([
+const inPageConfigs = [
   {
     case: 'simple',
     options: getNuxtOptions({}, 'page'),
@@ -183,23 +174,67 @@ describe.each([
         children: []
       }
     ]
+  },
+  {
+    case: 'ignore custom route',
+    options: getNuxtOptions({}, 'page'),
+    pages: [
+      {
+        path: '/about',
+        file: resolve(__dirname, '../fixtures/ignore_route/disable/pages/about.vue'),
+        children: []
+      }
+    ]
   }
-])('Page components', ({ case: _case, options, pages }) => {
-  test(_case, () => {
-    const srcDir = '/path/to/nuxt-app'
-    const pagesDir = 'pages'
-    const ctx: NuxtPageAnalyzeContext = {
-      stack: [],
-      srcDir,
-      pagesDir,
-      pages: new Map<NuxtPage, AnalyzedNuxtPageMeta>()
-    }
+]
 
-    analyzeNuxtPages(ctx, pages)
+describe('Extract page meta', () => {
+  test.each(inPageConfigs)(`$case (meta)`, async ({ case: _case, options, pages }) => {
+    const copy = {} as typeof options
+    deepCopy(options, copy)
+    copy.customRoutes = 'meta'
+
+    let pagesResolved: (value: NuxtPage[] | PromiseLike<NuxtPage[]>) => void
+    const localizedPages = new Promise<NuxtPage[]>(res => (pagesResolved = res))
+
+    const nuxt = await loadNuxt({
+      rootDir: resolve(process.cwd(), './test/fixtures/kit'),
+      configFile: 'nuxt.config',
+      dev: false,
+
+      overrides: {
+        css: [],
+        dev: false,
+        watch: [],
+        modules: ['@nuxtjs/i18n'],
+        dir: { pages: dirname(pages[0].file) },
+        i18n: copy,
+        hooks: {
+          'pages:resolved': pages => {
+            pagesResolved(pages)
+            // close early, we have what we need
+            nuxt.close()
+          }
+        }
+      }
+    })
+
+    try {
+      await buildNuxt(nuxt)
+    } catch (_) {
+      // ignore build errors
+    }
+    expect(stripFilePropertyFromPages(await localizedPages)).toMatchSnapshot()
+  })
+})
+
+describe('Page components', () => {
+  test.each(inPageConfigs)(`$case`, async ({ case: _case, options, pages }) => {
+    const ctx = createPageAnalyzeContext(undefined, undefined, options.pages)
+    analyzeNuxtPages(ctx, ctx.pagesDir, pages)
     const localizedPages = localizeRoutes(pages, {
       ...options,
       includeUnprefixedFallback: false,
-      localeCodes: getNormalizedLocales(options.locales).map(x => x.code),
       optionsResolver: getRouteOptionsResolver(ctx, options as Required<NuxtI18nOptions>)
     } as Parameters<typeof localizeRoutes>[1])
     expect(stripFilePropertyFromPages(localizedPages)).toMatchSnapshot()
@@ -254,20 +289,11 @@ test('#1649', () => {
 
   vi.spyOn(fs, 'readFileSync').mockReturnValue('')
 
-  const srcDir = '/path/to/1649'
-  const pagesDir = 'pages'
-  const ctx: NuxtPageAnalyzeContext = {
-    stack: [],
-    srcDir,
-    pagesDir,
-    pages: new Map<NuxtPage, AnalyzedNuxtPageMeta>()
-  }
-
-  analyzeNuxtPages(ctx, pages)
+  const ctx = createPageAnalyzeContext('/path/to/1649', undefined, options.pages)
+  analyzeNuxtPages(ctx, ctx.pagesDir, pages)
   const localizedPages = localizeRoutes(pages, {
     ...options,
     includeUnprefixedFallback: false,
-    localeCodes: getNormalizedLocales(options.locales).map(x => x.code),
     optionsResolver: getRouteOptionsResolver(ctx, options as Required<NuxtI18nOptions>)
   } as Parameters<typeof localizeRoutes>[1])
 
@@ -322,20 +348,11 @@ test('pages config using route name', () => {
 
   vi.spyOn(fs, 'readFileSync').mockReturnValue('')
 
-  const srcDir = '/path/to/1649'
-  const pagesDir = 'pages'
-  const ctx: NuxtPageAnalyzeContext = {
-    stack: [],
-    srcDir,
-    pagesDir,
-    pages: new Map<NuxtPage, AnalyzedNuxtPageMeta>()
-  }
-
-  analyzeNuxtPages(ctx, pages)
+  const ctx = createPageAnalyzeContext('/path/to/1649', undefined, options.pages)
+  analyzeNuxtPages(ctx, ctx.pagesDir, pages)
   const localizedPages = localizeRoutes(pages, {
     ...options,
     includeUnprefixedFallback: false,
-    localeCodes: getNormalizedLocales(options.locales).map(x => x.code),
     optionsResolver: getRouteOptionsResolver(ctx, options as Required<NuxtI18nOptions>)
   } as Parameters<typeof localizeRoutes>[1])
   expect(localizedPages).toMatchSnapshot()

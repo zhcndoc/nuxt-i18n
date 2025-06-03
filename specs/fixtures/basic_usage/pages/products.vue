@@ -1,14 +1,9 @@
 <script lang="ts" setup>
-import { ref } from '#imports'
-import LangSwitcher from '../components/LangSwitcher.vue'
+import { useFetch } from '#imports'
 
-const products = ref([])
 const { locale } = useI18n()
 const localePath = useLocalePath()
-
-onMounted(async () => {
-  products.value = await $fetch(`/api/products`)
-})
+const { data } = await useFetch('/api/products')
 </script>
 
 <template>
@@ -25,7 +20,7 @@ onMounted(async () => {
       </li>
     </ul>
     <ul>
-      <li v-for="product in products" :key="product.id">
+      <li v-for="product in data" :key="product.id">
         <NuxtLink
           class="product"
           :to="localePath({ name: 'products-slug', params: { slug: product?.slugs?.[locale] ?? 'none' } })"
@@ -36,9 +31,3 @@ onMounted(async () => {
     <NuxtPage />
   </div>
 </template>
-
-<style>
-.product {
-  padding: 1em 0.5em;
-}
-</style>

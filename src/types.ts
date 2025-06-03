@@ -46,17 +46,8 @@ export type LocaleInfo = Omit<LocaleObject, 'file' | 'files'> & {
  */
 export type FileMeta = {
   path: string
-  loadPath: string
   hash: string
   type: LocaleType
-}
-
-/**
- * @internal
- */
-export type VueI18nConfigPathInfo = {
-  rootDir: string
-  meta: FileMeta
 }
 
 /**
@@ -79,16 +70,6 @@ export interface ExperimentalFeatures {
    */
   localeDetector?: string
   /**
-   * Updates links rendered using `<SwitchLocalePath>` before server response, necessary for dynamic i18n params.
-   * @default false
-   */
-  switchLocalePathLinkSSR?: boolean
-  /**
-   * Automatically imports/initializes `$t`, `$rt`, `$d`, `$n`, `$tm` and `$te` functions in `<script setup>` when used.
-   * @default false
-   */
-  autoImportTranslationFunctions?: boolean
-  /**
    * Generates types for i18n routing helper
    * @default true
    */
@@ -101,33 +82,43 @@ export interface ExperimentalFeatures {
    */
   typedOptionsAndMessages?: false | 'default' | 'all'
   /**
-   * Locale file and langDir paths can be formatted differently to prevent exposing sensitive paths in production.
-   * - `'absolute'` locale file and langDir paths contain the full absolute path
-   * - `'relative'` locale file and langDir paths are converted to be relative to the `rootDir`
-   * @default 'absolute'
-   */
-  generatedLocaleFilePathFormat?: 'absolute' | 'relative' | 'off'
-  /**
    * Removes non-canonical query parameters from alternate link meta tags
-   * @default false
+   * @default true
    */
   alternateLinkCanonicalQueries?: boolean
   /**
-   * Hot module replacement for locale message files and vue-i18n configuration in dev mode.
-   * @default true
+   * Enables caching of locale messages in dev mode
+   * @default false
    */
-  hmr?: boolean
+  devCache?: boolean
+  /**
+   * Locale messages cache lifetime in seconds
+   * - `-1` cache disabled
+   * @default -1 // disabled, or `86400` (1 day) if all locale files are static files
+   */
+  cacheLifetime?: number
+  /**
+   * Preload locale messages and add them to the server-side rendered HTML.
+   * This increases the size of the initial HTML payload but prevents an addition client-side request to load the messages.
+   *
+   * Since locale messages can be a large collection, it is recommended to use this in combination with `stripMessagesPayload`.
+   * @default false
+   */
+  preload?: boolean
+  /**
+   * Strip unused locale messages from the server-side rendered HTML, reducing the size of the HTML payload.
+   *
+   * The `useI18nPreloadKeys` composable is used to prevent keys from being stripped, this is useful for conditionally rendered translations.
+   * @default false // or `true` if `experimental.preload` is enabled
+   */
+  stripMessagesPayload?: boolean
+  strictSeo?: boolean | SeoAttributesOptions
 }
 
 export interface BundleOptions
   extends Pick<
     PluginOptions,
-    | 'compositionOnly'
-    | 'runtimeOnly'
-    | 'fullInstall'
-    | 'dropMessageCompiler'
-    | 'onlyLocales'
-    | 'optimizeTranslationDirective'
+    'compositionOnly' | 'runtimeOnly' | 'fullInstall' | 'dropMessageCompiler' | 'onlyLocales'
   > {}
 
 export interface CustomBlocksOptions extends Pick<PluginOptions, 'defaultSFCLang' | 'globalSFCScope'> {}
@@ -148,10 +139,10 @@ export type NuxtI18nOptions<
   vueI18n?: string
   experimental?: ExperimentalFeatures
   /**
-   * The directory to resolve i18n files from, the restructure can be disabled by setting this to `false`.
+   * The directory from which i18n files are resolved relative to the `<rootDir>` of the project.
    * @default 'i18n'
    */
-  restructureDir?: string | false
+  restructureDir?: string
   bundle?: BundleOptions
   compilation?: LocaleMessageCompilationOptions
   customBlocks?: CustomBlocksOptions
@@ -171,21 +162,19 @@ export type NuxtI18nOptions<
   multiDomainLocales?: boolean
   detectBrowserLanguage?: DetectBrowserLanguageOptions | false
   langDir?: string | null
-  lazy?: boolean
   pages?: CustomRoutePages
-  customRoutes?: 'page' | 'config'
+  customRoutes?: 'page' | 'config' | 'meta'
   /**
    * Do not use in projects - this is used internally for e2e tests to override default option merging.
    * @internal
    */
   overrides?: Omit<NuxtI18nOptions<Context>, 'overrides'>
-  /**
-   * Do not use in projects - this is used internally for e2e tests to override default option merging.
-   * @internal
-   */
-  i18nModules?: { langDir?: string | null; locales?: NuxtI18nOptions<Context>['locales'] }[]
   rootRedirect?: string | RootRedirectOptions
   skipSettingLocaleOnNavigate?: boolean
+  /**
+   * @deprecated This option is deprecated, only `'composition'` types will be supported in the future.
+   * @default 'composition'
+   */
   types?: 'composition' | 'legacy'
   debug?: boolean | 'verbose'
   parallelPlugin?: boolean
@@ -222,6 +211,7 @@ export type NuxtI18nOptions<
   trailingSlash?: boolean
   /**
    * Internal separator used for generated route names for each locale - you shouldn't need to change this
+   * @deprecated This option is deprecated and will be removed in the future.
    * @default '___'
    */
   routesNameSeparator?: string
@@ -229,6 +219,7 @@ export type NuxtI18nOptions<
    * Internal suffix added to generated route names for default locale
    *
    * Relevant if strategy is `prefix_and_default` - you shouldn't need to change this.
+   * @deprecated This option is deprecated and will be removed in the future.
    * @default 'default'
    */
   defaultLocaleRouteNameSuffix?: string
@@ -242,13 +233,30 @@ export type NuxtI18nOptions<
    *
    * By default VueRouter's base URL will be used and only if that is not available, fallback URL will be used.
    *
-   * Can also be a function (will be passed a Nuxt Context as a parameter) that returns a string.
-   *
-   * Useful to make base URL dynamic based on request headers.
-   *
    * @default ''
    */
   baseUrl?: string | BaseUrlResolveHandler<Context>
+  /**
+   * Hot module replacement for locale message files and vue-i18n configuration in dev mode.
+   *
+   * @defaultValue `true`
+   */
+  hmr?: boolean
+  /**
+   * Automatically imports/initializes `$t`, `$rt`, `$d`, `$n`, `$tm` and `$te` functions in `<script setup>` when used.
+   *
+   * This requires Nuxt's `autoImport` functionality to work.
+   *
+   * @example
+   * ```vue
+   * <script setup>
+   * // const { t: $t } = useI18n() --- automatically declared
+   * const title = computed(() => $t('my-title'))
+   * </script>
+   * ```
+   * @default true
+   */
+  autoDeclare?: boolean
 }
 
 export type VueI18nConfig = () => Promise<{ default: I18nOptions | (() => I18nOptions | Promise<I18nOptions>) }>
@@ -291,6 +299,7 @@ export interface LocaleObject<T = Locale> {
 
 /**
  * @public
+ * @deprecated Configuring baseUrl as a function is deprecated and will be removed in the v11.
  */
 export type BaseUrlResolveHandler<Context = unknown> = (context: Context) => string
 
@@ -325,11 +334,6 @@ export interface I18nHeadOptions {
    * @default true
    */
   seo?: boolean | SeoAttributesOptions
-  /**
-   * Identifier attribute of `<meta>` tag
-   * @default 'hid'
-   */
-  key?: string
 }
 
 /**
@@ -351,71 +355,15 @@ export interface I18nHeadMetaInfo {
 export interface I18nPublicRuntimeConfig {
   baseUrl: NuxtI18nOptions['baseUrl']
   rootRedirect: NuxtI18nOptions['rootRedirect']
-  multiDomainLocales?: NuxtI18nOptions['multiDomainLocales']
-
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
   domainLocales: { [key: Locale]: { domain: string | undefined } }
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  experimental: NonNullable<NuxtI18nOptions['experimental']>
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
+  /** @internal Overwritten at build time, used to pass generated options to runtime */
   locales: NonNullable<Required<NuxtI18nOptions<unknown>>['locales']>
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  differentDomains: Required<NuxtI18nOptions>['differentDomains']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  skipSettingLocaleOnNavigate: Required<NuxtI18nOptions>['skipSettingLocaleOnNavigate']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
+  /** @internal Overwritten at build time, used to pass generated options to runtime */
   defaultLocale: Required<NuxtI18nOptions>['defaultLocale']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  lazy: Required<NuxtI18nOptions>['lazy']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  defaultDirection: Required<NuxtI18nOptions>['defaultDirection']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
+  /** @internal Overwritten at build time, used to pass generated options to runtime */
+  experimental: NonNullable<NuxtI18nOptions['experimental']>
+  /** @internal Overwritten at build time, used to pass generated options to runtime */
   detectBrowserLanguage: Required<NuxtI18nOptions>['detectBrowserLanguage']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  strategy: Required<NuxtI18nOptions>['strategy']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  routesNameSeparator: Required<NuxtI18nOptions>['routesNameSeparator']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  defaultLocaleRouteNameSuffix: Required<NuxtI18nOptions>['defaultLocaleRouteNameSuffix']
-  /**
-   * Overwritten at build time, used to pass generated options to runtime
-   * @internal
-   */
-  trailingSlash: Required<NuxtI18nOptions>['trailingSlash']
+  /** @internal Overwritten at build time, used to pass generated options to runtime */
+  skipSettingLocaleOnNavigate: Required<NuxtI18nOptions>['skipSettingLocaleOnNavigate']
 }

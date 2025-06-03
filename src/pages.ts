@@ -1,14 +1,11 @@
-import createDebug from 'debug'
 import { addTemplate } from '@nuxt/kit'
 import { readFileSync } from 'node:fs'
 import { isString } from '@intlify/shared'
 import { parse as parseSFC, compileScript } from '@vue/compiler-sfc'
 import { walk } from 'estree-walker'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { formatMessage } from './utils'
 import { getRoutePath, parseSegment } from './utils/route-parsing'
-import { localizeRoutes, type ComputedRouteOptions, type RouteOptionsResolver } from './routing'
-import { mergeLayerPages } from './layers'
+import { localizeRoutes } from './routing'
 import { resolve, parse as parsePath, dirname } from 'pathe'
 import { NUXT_I18N_COMPOSABLE_DEFINE_ROUTE } from './constants'
 import { createRoutesContext } from 'unplugin-vue-router'
@@ -17,13 +14,12 @@ import { resolveOptions } from 'unplugin-vue-router/options'
 import type { Nuxt, NuxtPage } from '@nuxt/schema'
 import type { Node, ObjectExpression, ArrayExpression, Expression, PrivateName } from '@babel/types'
 import type { EditableTreeNode, Options as TypedRouterOptions } from 'unplugin-vue-router'
-import type { NuxtI18nOptions, CustomRoutePages } from './types'
+import type { NuxtI18nOptions } from './types'
 import type { I18nNuxtContext } from './context'
-
-const debug = createDebug('@nuxtjs/i18n:pages')
+import type { ComputedRouteOptions, RouteOptionsResolver } from './kit/gen'
+import type { I18nRoute } from './runtime/composables'
 
 export type AnalyzedNuxtPageMeta = {
-  inRoot: boolean
   /**
    * Analyzed path used to retrieve configured custom paths
    */
@@ -31,72 +27,72 @@ export type AnalyzedNuxtPageMeta = {
   name?: string
 }
 
-export type NuxtPageAnalyzeContext = {
+type NuxtPageAnalyzeContext = {
   /**
    * Array of paths to track current route depth
    */
   stack: string[]
-  srcDir: string
-  pagesDir: string
-  pages: Map<NuxtPage, AnalyzedNuxtPageMeta>
+  config: NuxtI18nOptions['pages']
+  pages: Map<string, AnalyzedNuxtPageMeta>
 }
 
-export async function setupPages({ localeCodes, options, isSSR }: I18nNuxtContext, nuxt: Nuxt) {
+type NarrowedNuxtPage = Omit<NuxtPage, 'redirect' | 'children'> & {
+  redirect?: (Omit<NarrowedNuxtPage, 'name'> & { name?: string }) | string
+  children?: NarrowedNuxtPage[]
+}
+
+export async function setupPages({ localeCodes, options, normalizedLocales }: I18nNuxtContext, nuxt: Nuxt) {
   if (!localeCodes.length) return
 
-  let includeUnprefixedFallback = !isSSR
+  let includeUnprefixedFallback = !nuxt.options.ssr
   nuxt.hook('nitro:init', () => {
-    debug('enable includeUprefixedFallback')
     includeUnprefixedFallback = options.strategy !== 'prefix'
   })
 
-  const pagesDir = nuxt.options.dir && nuxt.options.dir.pages ? nuxt.options.dir.pages : 'pages'
-  const srcDir = nuxt.options.srcDir
-  debug(`pagesDir: ${pagesDir}, srcDir: ${srcDir}, trailingSlash: ${options.trailingSlash}`)
-
+  const projectLayer = nuxt.options._layers[0]
   const typedRouter = await setupExperimentalTypedRoutes(options, nuxt)
 
-  const pagesHook: Parameters<(typeof nuxt)['hook']>[0] =
-    nuxt.options.experimental.scanPageMeta === 'after-resolve' ? 'pages:resolved' : 'pages:extend'
+  nuxt.options.experimental.extraPageMetaExtractionKeys ??= []
+  nuxt.options.experimental.extraPageMetaExtractionKeys.push('i18n')
+  nuxt.hook(
+    nuxt.options.experimental.scanPageMeta === 'after-resolve' ? 'pages:resolved' : 'pages:extend',
+    async pages => {
+      const ctx: NuxtPageAnalyzeContext = {
+        stack: [],
+        config: options.pages,
+        pages: new Map<string, AnalyzedNuxtPageMeta>()
+      }
 
-  nuxt.hook(pagesHook, async pages => {
-    debug('pages making ...', pages)
-    const ctx: NuxtPageAnalyzeContext = {
-      stack: [],
-      srcDir,
-      pagesDir,
-      pages: new Map<NuxtPage, AnalyzedNuxtPageMeta>()
+      // analyze layer pages
+      for (const layer of nuxt.options._layers) {
+        const pagesDir = resolve(projectLayer.config.rootDir, layer.config.srcDir, layer.config.dir?.pages ?? 'pages')
+        analyzeNuxtPages(ctx, pagesDir, pages)
+      }
+
+      if (typedRouter) {
+        await typedRouter.createContext(pages).scanPages(false)
+      }
+
+      const localizedPages = localizeRoutes(pages as NarrowedNuxtPage[], {
+        ...options,
+        includeUnprefixedFallback,
+        locales: normalizedLocales,
+        optionsResolver: getRouteOptionsResolver(ctx, options)
+      })
+
+      // keep root when using prefixed routing without prerendering
+      const indexPage = pages.find(x => x.path === '/')
+      if (!nuxt.options._generate && options.strategy === 'prefix' && indexPage != null) {
+        localizedPages.unshift(indexPage as NarrowedNuxtPage)
+      }
+
+      // do not mutate pages if localization is skipped
+      if (pages !== localizedPages) {
+        pages.length = 0
+        pages.unshift(...localizedPages)
+      }
     }
-
-    analyzeNuxtPages(ctx, pages)
-    const analyzer = (pageDirOverride: string) => analyzeNuxtPages(ctx, pages, pageDirOverride)
-    mergeLayerPages(analyzer, nuxt)
-
-    if (typedRouter) {
-      await typedRouter.createContext(pages).scanPages(false)
-    }
-
-    const localizedPages = localizeRoutes(pages, {
-      ...options,
-      localeCodes,
-      includeUnprefixedFallback,
-      optionsResolver: getRouteOptionsResolver(ctx, options)
-    })
-
-    // keep root when using prefixed routing without prerendering
-    const indexPage = pages.find(x => x.path === '/')
-    if (!nuxt.options._generate && options.strategy === 'prefix' && indexPage != null) {
-      localizedPages.unshift(indexPage)
-    }
-
-    // do not mutate pages if localization is skipped
-    if (pages !== localizedPages) {
-      pages.length = 0
-      pages.unshift(...localizedPages)
-    }
-
-    debug('... made pages', pages)
-  })
+  )
 }
 
 /**
@@ -222,26 +218,24 @@ function analyzePagePath(pagePath: string, parents = 0) {
  * Construct the map of full paths from NuxtPage to support custom routes.
  * `NuxtPage` of the nested route doesn't have a slash (`/`) and isn’t the full path.
  */
-export function analyzeNuxtPages(ctx: NuxtPageAnalyzeContext, pages?: NuxtPage[], pageDirOverride?: string): void {
+export function analyzeNuxtPages(ctx: NuxtPageAnalyzeContext, pagesDir: string, pages?: NuxtPage[]): void {
   if (pages == null || pages.length === 0) return
 
-  const pagesPath = resolve(ctx.srcDir, pageDirOverride ?? ctx.pagesDir)
   for (const page of pages) {
     if (page.file == null) continue
 
-    const splits = page.file.split(pagesPath)
+    const splits = page.file.split(pagesDir)
     const filePath = splits.at(1)
     if (filePath == null) continue
 
-    ctx.pages.set(page, {
+    ctx.pages.set(page.file, {
       path: analyzePagePath(filePath, ctx.stack.length),
       // if route has an index child the parent will not have a name
-      name: page.name ?? page.children?.find(x => x.path.endsWith('/index'))?.name,
-      inRoot: ctx.stack.length === 0
+      name: page.name ?? page.children?.find(x => x.path.endsWith('/index'))?.name
     })
 
     ctx.stack.push(page.path)
-    analyzeNuxtPages(ctx, page.children, pageDirOverride)
+    analyzeNuxtPages(ctx, pagesDir, page.children)
     ctx.stack.pop()
   }
 }
@@ -253,17 +247,8 @@ export function getRouteOptionsResolver(
   ctx: NuxtPageAnalyzeContext,
   options: Pick<Required<NuxtI18nOptions>, 'pages' | 'defaultLocale' | 'customRoutes'>
 ): RouteOptionsResolver {
-  const { pages, defaultLocale, customRoutes } = options
-
-  const useConfig = customRoutes === 'config'
-  debug('getRouteOptionsResolver useConfig', useConfig)
-
-  const getter = useConfig ? getRouteOptionsFromPages : getRouteOptionsFromComponent
-  return (route, localeCodes) => {
-    const ret = getter(route, localeCodes, ctx, pages, defaultLocale)
-    debug('getRouteOptionsResolver resolved', route.path, route.name, ret)
-    return ret
-  }
+  const { defaultLocale, customRoutes } = options
+  return (route, localeCodes) => getRouteOptions(route, localeCodes, ctx, defaultLocale, customRoutes)
 }
 
 function resolveRoutePath(path: string): string {
@@ -272,103 +257,84 @@ function resolveRoutePath(path: string): string {
   return getRoutePath(tokens)
 }
 
-/**
- * Retrieve custom routes from i18n config `pages` property
- */
-function getRouteOptionsFromPages(
-  route: NuxtPage,
-  localeCodes: string[],
+function getRouteFromConfig(
   ctx: NuxtPageAnalyzeContext,
-  pages: CustomRoutePages,
-  defaultLocale: string
-) {
-  const options: ComputedRouteOptions = {
-    locales: localeCodes,
-    paths: {}
-  }
+  route: NuxtPage,
+  localeCodes: string[]
+): ComputedRouteOptions | false | undefined {
+  const pageMeta = ctx.pages.get(route.file!)
 
-  // get `AnalyzedNuxtPageMeta` to use Vue Router path mapping
-  const pageMeta = ctx.pages.get(route as unknown as NuxtPage)
-
-  // skip if no `AnalyzedNuxtPageMeta`
   if (pageMeta == null) {
-    console.warn(
-      formatMessage(`Couldn't find AnalyzedNuxtPageMeta by NuxtPage (${route.path}), so no custom route for it`)
-    )
-    return options
-  }
-
-  const valueByName = pageMeta.name ? pages[pageMeta.name] : undefined
-  const pageOptions = valueByName ?? pages[pageMeta.path]
-
-  // routing disabled
-  if (pageOptions === false) {
+    console.warn(`[nuxt-i18n] No custom route config found for ${route.path}`)
     return undefined
   }
 
-  // skip if no page options defined
-  if (!pageOptions) {
-    return options
+  const valueByName = pageMeta?.name ? ctx.config?.[pageMeta.name] : undefined
+  const valueByPath = pageMeta?.path != null ? ctx.config?.[pageMeta.path] : undefined
+  const resolved = valueByName ?? valueByPath
+  if (!resolved) return resolved
+  return {
+    paths: (resolved ?? {}) as Record<string, string>,
+    locales: localeCodes.filter(locale => resolved[locale] !== false)
+  }
+}
+
+function getRouteFromResource(
+  localeCodes: string[],
+  resolved: ComputedRouteOptions | I18nRoute | false | undefined
+): ComputedRouteOptions | false | undefined {
+  if (!resolved) return resolved
+  return {
+    paths: (resolved.paths ?? {}) as Record<string, string>,
+    locales: resolved?.locales || localeCodes
+  }
+}
+
+function getRouteOptions(
+  route: NuxtPage,
+  localeCodes: string[],
+  ctx: NuxtPageAnalyzeContext,
+  defaultLocale: string,
+  mode: 'config' | 'page' | 'meta' = 'config'
+) {
+  let resolvedOptions
+  if (mode === 'config') {
+    resolvedOptions = getRouteFromConfig(ctx, route, localeCodes)
+  } else {
+    resolvedOptions = getRouteFromResource(
+      localeCodes,
+      mode === 'page' ? readComponent(route.file!) : (route.meta?.i18n as I18nRoute | false | undefined)
+    )
   }
 
-  // remove disabled locales from page options
-  options.locales = options.locales.filter(locale => pageOptions[locale] !== false)
+  // routing disabled
+  if (resolvedOptions === false) {
+    return undefined
+  }
+
+  const locales = resolvedOptions?.locales || localeCodes
+  const paths: Record<string, string> = {}
+
+  // skip if no page options defined
+  if (!resolvedOptions) {
+    return { locales, paths }
+  }
 
   // construct paths object
-  for (const locale of options.locales) {
+  for (const locale of resolvedOptions.locales) {
     // set custom path if any
-    if (isString(pageOptions[locale])) {
-      options.paths[locale] = resolveRoutePath(pageOptions[locale])
+    if (isString(resolvedOptions.paths[locale])) {
+      paths[locale] = resolveRoutePath(resolvedOptions.paths[locale])
       continue
     }
 
     // set default locale's custom path if any
-    if (isString(pageOptions[defaultLocale])) {
-      options.paths[locale] = resolveRoutePath(pageOptions[defaultLocale])
+    if (isString(resolvedOptions.paths[defaultLocale])) {
+      paths[locale] = resolveRoutePath(resolvedOptions.paths[defaultLocale])
     }
   }
 
-  return options
-}
-
-/**
- * Retrieve custom routes by parsing page components and extracting argument passed to `defineI18nRoute()`
- */
-function getRouteOptionsFromComponent(route: NuxtPage, localeCodes: string[]) {
-  debug('getRouteOptionsFromComponent', route)
-
-  // localize disabled if no file (vite) or component (webpack)
-  if (route.file == null) {
-    return undefined
-  }
-
-  const options: ComputedRouteOptions = {
-    locales: localeCodes,
-    paths: {}
-  }
-
-  const componentOptions = readComponent(route.file)
-
-  // skip if page components not defined
-  if (componentOptions == null) {
-    return options
-  }
-
-  // localize disabled
-  if (componentOptions === false) {
-    return undefined
-  }
-
-  options.locales = componentOptions.locales || localeCodes
-
-  // construct paths object
-  for (const locale in componentOptions.paths) {
-    if (isString(componentOptions.paths[locale])) {
-      options.paths[locale] = resolveRoutePath(componentOptions.paths[locale])
-    }
-  }
-
-  return options
+  return { locales, paths }
 }
 
 /**
@@ -409,7 +375,7 @@ function readComponent(target: string) {
       return evalValue(extract)
     }
   } catch (e: unknown) {
-    console.warn(formatMessage(`Couldn't read component data at ${target}: (${(e as Error).message})`))
+    console.warn(`[nuxt-i18n] Couldn't read component data at ${target}: (${(e as Error).message})`)
   }
 
   return undefined
@@ -422,20 +388,20 @@ function nodeNameOrValue(val: PrivateName | Expression, name: string) {
 function verifyObjectValue(properties: ObjectExpression['properties']) {
   for (const prop of properties) {
     if (prop.type !== 'ObjectProperty') {
-      console.warn(formatMessage(`'defineI18nRoute' requires an object as argument`))
+      console.warn(`[nuxt-i18n] 'defineI18nRoute' requires an object as argument`)
       return false
     }
 
     if (nodeNameOrValue(prop.key, 'locales')) {
       if (prop.value.type !== 'ArrayExpression' || !verifyLocalesArrayExpression(prop.value.elements)) {
-        console.warn(formatMessage(`expected 'locale' to be an array`))
+        console.warn(`[nuxt-i18n] expected 'locale' to be an array`)
         return false
       }
     }
 
     if (nodeNameOrValue(prop.key, 'paths')) {
       if (prop.value.type !== 'ObjectExpression' || !verifyPathsObjectExpress(prop.value.properties)) {
-        console.warn(formatMessage(`expected 'paths' to be an object`))
+        console.warn(`[nuxt-i18n] expected 'paths' to be an object`)
         return false
       }
     }
@@ -447,17 +413,17 @@ function verifyObjectValue(properties: ObjectExpression['properties']) {
 function verifyPathsObjectExpress(properties: ObjectExpression['properties']) {
   for (const prop of properties) {
     if (prop.type !== 'ObjectProperty') {
-      console.warn(formatMessage(`'paths' is required object`))
+      console.warn(`[nuxt-i18n] 'paths' is required object`)
       return false
     }
 
     if (prop.key.type === 'Identifier' && prop.value.type !== 'StringLiteral') {
-      console.warn(formatMessage(`expected 'paths.${prop.key.name}' to be a string literal`))
+      console.warn(`[nuxt-i18n] expected 'paths.${prop.key.name}' to be a string literal`)
       return false
     }
 
     if (prop.key.type === 'StringLiteral' && prop.value.type !== 'StringLiteral') {
-      console.warn(formatMessage(`expected 'paths.${prop.key.value}' to be a string literal`))
+      console.warn(`[nuxt-i18n] expected 'paths.${prop.key.value}' to be a string literal`)
       return false
     }
   }
@@ -468,7 +434,7 @@ function verifyPathsObjectExpress(properties: ObjectExpression['properties']) {
 function verifyLocalesArrayExpression(elements: ArrayExpression['elements']) {
   for (const element of elements) {
     if (element?.type !== 'StringLiteral') {
-      console.warn(formatMessage(`required 'locales' value string literal`))
+      console.warn(`[nuxt-i18n] required 'locales' value string literal`)
       return false
     }
   }
@@ -477,10 +443,10 @@ function verifyLocalesArrayExpression(elements: ArrayExpression['elements']) {
 
 function evalValue(value: string) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call
     return new Function(`return (${value})`)() as ComputedRouteOptions | false
-  } catch (_e) {
-    console.error(formatMessage(`Cannot evaluate value: ${value}`))
+  } catch {
+    console.error(`[nuxt-i18n] Cannot evaluate value: ${value}`)
     return
   }
 }

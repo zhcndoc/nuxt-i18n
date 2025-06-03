@@ -1,11 +1,6 @@
+import { useNuxt } from '@nuxt/kit'
 import { generateLoaderOptions } from './gen'
 import { genArrayFromRaw, genObjectFromRaw, genObjectFromValues, genString } from 'knitwork'
-import {
-  DEFAULT_DYNAMIC_PARAMS_KEY,
-  DEFAULT_COOKIE_KEY,
-  NUXT_I18N_MODULE_ID,
-  SWITCH_LOCALE_PATH_LINK_IDENTIFIER
-} from './constants'
 import type { I18nNuxtContext } from './context'
 
 type TemplateNuxtI18nOptions = ReturnType<typeof generateLoaderOptions>
@@ -113,10 +108,14 @@ function genVueI18nConfigHMR(configs: TemplateNuxtI18nOptions['vueI18nConfigs'])
   return statements.join('\n\n')
 }
 
-export function generateTemplateNuxtI18nOptions(ctx: I18nNuxtContext, opts: TemplateNuxtI18nOptions): string {
+export function generateTemplateNuxtI18nOptions(
+  ctx: I18nNuxtContext,
+  opts: TemplateNuxtI18nOptions,
+  nuxt = useNuxt()
+): string {
   const codeHMR =
-    ctx.isDev &&
-    opts.nuxtI18nOptions.experimental.hmr &&
+    nuxt.options.dev &&
+    ctx.options.hmr &&
     [
       `if(import.meta.hot) {`,
       deepEqualFn,
@@ -126,20 +125,13 @@ export function generateTemplateNuxtI18nOptions(ctx: I18nNuxtContext, opts: Temp
       '}'
     ].join('\n\n')
 
-  const importStrings = new Set<string>()
   const localeLoaderEntries: Record<string, { key: string; load: string; cache: boolean }[]> = {}
   for (const locale in opts.localeLoaders) {
-    const val = opts.localeLoaders[locale]
-    const importers = val.flatMap(x => x.importString)
-    for (const importer of importers) {
-      importStrings.add(importer)
-    }
-    localeLoaderEntries[locale] = val.map(({ key, load, cache }) => ({ key, load, cache }))
+    localeLoaderEntries[locale] = opts.localeLoaders[locale].map(({ key, load, cache }) => ({ key, load, cache }))
   }
 
   return `
 // @ts-nocheck
-${(!ctx.options.lazy && [...importStrings].join('\n')) || ''}
 
 export const localeCodes =  ${genArrayFromRaw(ctx.localeCodes.map(x => genString(x)))}
 
@@ -147,18 +139,8 @@ export const localeLoaders = ${genObjectFromRaw(localeLoaderEntries)}
 
 export const vueI18nConfigs = ${genArrayFromRaw(opts.vueI18nConfigs.map(x => x.importer))}
 
-export const nuxtI18nOptions = ${genObjectFromValues(opts.nuxtI18nOptions)}
-
 export const normalizedLocales = ${genArrayFromRaw(opts.normalizedLocales.map(x => genObjectFromValues(x, '  ')))}
 
-export const NUXT_I18N_MODULE_ID = ${genString(NUXT_I18N_MODULE_ID)}
-export const parallelPlugin = ${ctx.options.parallelPlugin}
-export const isSSG = ${ctx.isSSG}
-export const hasPages = ${ctx.hasPages}
-
-export const DEFAULT_COOKIE_KEY = ${genString(DEFAULT_COOKIE_KEY)}
-export const DEFAULT_DYNAMIC_PARAMS_KEY = ${genString(DEFAULT_DYNAMIC_PARAMS_KEY)}
-export const SWITCH_LOCALE_PATH_LINK_IDENTIFIER = ${genString(SWITCH_LOCALE_PATH_LINK_IDENTIFIER)}
 /** client **/
 ${codeHMR || ''}
 /** client-end **/`

@@ -1,133 +1,58 @@
-import { isString } from '@intlify/shared'
-import { localeCodes } from '#build/i18n.options.mjs'
-import { useRuntimeConfig } from '#app'
+import { assign } from '@intlify/shared'
+import { normalizeRouteName, getLocalizedRouteName } from '#i18n-kit/routing'
 
-import type { LocaleObject, I18nPublicRuntimeConfig } from '#internal-i18n-types'
 import type { Locale } from 'vue-i18n'
-import type { CompatRoute } from '../types'
-import type { RouteRecordNameGeneric } from 'vue-router'
+import type { RouteLocationPathRaw, RouteLocationResolvedGeneric, Router, RouteRecordNameGeneric } from 'vue-router'
 
-export function getRouteName(routeName?: RouteRecordNameGeneric) {
-  if (isString(routeName)) return routeName
-  if (routeName != null) return routeName.toString()
-  return '(null)'
-}
-
-export function getLocaleRouteName(routeName: RouteRecordNameGeneric, locale: Locale, opts: I18nPublicRuntimeConfig) {
-  const { defaultLocale, strategy, routesNameSeparator, defaultLocaleRouteNameSuffix, differentDomains } = opts
-  const localizedRoutes = strategy !== 'no_prefix' || differentDomains
-  const name = getRouteName(routeName) + (localizedRoutes ? routesNameSeparator + locale : '')
-  if (locale === defaultLocale && strategy === 'prefix_and_default') {
-    return name + routesNameSeparator + defaultLocaleRouteNameSuffix
+/**
+ * Returns a getter function which returns a localized route name for the given route and locale.
+ * The returned function can vary based on the strategy and domain configuration.
+ */
+export function createLocaleRouteNameGetter(
+  defaultLocale: string
+): (name: RouteRecordNameGeneric | null, locale: string) => string {
+  // no route localization
+  if (!__I18N_ROUTING__ && !__DIFFERENT_DOMAINS__) {
+    return routeName => normalizeRouteName(routeName)
   }
-  return name
+
+  // default locale routes have default suffix
+  if (__I18N_STRATEGY__ === 'prefix_and_default') {
+    return (name, locale) => getLocalizedRouteName(normalizeRouteName(name), locale, locale === defaultLocale)
+  }
+
+  // routes are localized
+  return (name, locale) => getLocalizedRouteName(normalizeRouteName(name), locale, false)
 }
 
 /**
- * The browser locale code and match score
+ * Factory function which returns a resolver function based on the routing strategy.
  */
-interface BrowserLocale {
-  /** The locale code, such as BCP 47 (e.g `en-US`), or `ja` */
-  code: string
-  /** The match score - used to sort multiple matched locales */
-  score: number
-}
+export function createLocalizedRouteByPathResolver(
+  router: Router
+): (route: RouteLocationPathRaw, locale: Locale) => RouteLocationPathRaw | RouteLocationResolvedGeneric {
+  if (!__I18N_ROUTING__) {
+    return route => route
+  }
 
-/**
- * The browser locale matcher
- *
- * @remarks
- * This matcher is used by {@link findBrowserLocale} function
- *
- * @param locales - The target {@link LocaleObject | locale} list
- * @param browserLocales - The locale code list that is used in browser
- *
- * @returns The matched {@link BrowserLocale | locale info}
- */
-function matchBrowserLocale(locales: LocaleObject[], browserLocales: readonly string[]): BrowserLocale[] {
-  const matchedLocales: BrowserLocale[] = []
+  if (__I18N_STRATEGY__ === 'prefix') {
+    /**
+     * The `router.resolve` function prints warnings when resolving non-existent paths and `router.hasRoute` only accepts named routes.
+     * The path passed to `localePath` is not prefixed which will trigger vue-router warnings since all routes are prefixed.
+     * We work around this by manually prefixing the path and finding the route in `router.options.routes`.
+     */
+    return (route, locale) => {
+      const targetPath = '/' + locale + (route.path === '/' ? '' : route.path)
+      const _route = router.options.routes.find(r => r.path === targetPath)
 
-  // first pass: match exact locale.
-  for (const [index, browserCode] of browserLocales.entries()) {
-    const matchedLocale = locales.find(l => l.language?.toLowerCase() === browserCode.toLowerCase())
-    if (matchedLocale) {
-      matchedLocales.push({ code: matchedLocale.code, score: 1 - index / browserLocales.length })
-      break
+      if (_route == null) {
+        return route
+      }
+
+      return router.resolve(assign({}, route, _route, { path: targetPath }))
     }
   }
 
-  // second pass: match only locale code part of the browser locale (not including country).
-  for (const [index, browserCode] of browserLocales.entries()) {
-    const languageCode = browserCode.split('-')[0].toLowerCase()
-    const matchedLocale = locales.find(l => l.language?.split('-')[0].toLowerCase() === languageCode)
-    if (matchedLocale) {
-      // deduct a thousandth for being non-exact match.
-      matchedLocales.push({ code: matchedLocale.code, score: 0.999 - index / browserLocales.length })
-      break
-    }
-  }
-
-  return matchedLocales
-}
-
-function compareBrowserLocale(a: BrowserLocale, b: BrowserLocale): number {
-  if (a.score === b.score) {
-    // if scores are equal then pick more specific (longer) code.
-    return b.code.length - a.code.length
-  }
-  return b.score - a.score
-}
-
-/**
- * Find the browser locale
- *
- * @param locales - The target {@link LocaleObject} list
- * @param browserLocales - The locale code list that is used in browser
- *
- * @returns The matched the locale code
- */
-export function findBrowserLocale(locales: LocaleObject[], browserLocales: readonly string[]): string {
-  const normalizedLocales = locales.map(l => ({ code: l.code, language: l.language || l.code }))
-  const matchedLocales = matchBrowserLocale(normalizedLocales, browserLocales)
-  if (matchedLocales.length === 0) {
-    return ''
-  }
-
-  // sort by score when multiple locales matched
-  if (matchedLocales.length > 1) {
-    matchedLocales.sort(compareBrowserLocale)
-  }
-
-  return matchedLocales[0].code
-}
-
-export function getLocalesRegex(localeCodes: string[]) {
-  return new RegExp(`^/(${localeCodes.join('|')})(?:/|$)`, 'i')
-}
-
-const localesPattern = `(${localeCodes.join('|')})`
-export const regexpPath = getLocalesRegex(localeCodes)
-
-export function createLocaleFromRouteGetter() {
-  const { routesNameSeparator, defaultLocaleRouteNameSuffix } = useRuntimeConfig().public.i18n
-  const defaultSuffixPattern = `(?:${routesNameSeparator}${defaultLocaleRouteNameSuffix})?`
-  const regexpName = new RegExp(`${routesNameSeparator}${localesPattern}${defaultSuffixPattern}$`, 'i')
-
-  /**
-   * extract locale code from route name or path
-   */
-  return (route: string | CompatRoute) => {
-    if (isString(route)) {
-      return route.match(regexpPath)?.[1] ?? ''
-    }
-    // extract from route name
-    if (route.name) {
-      return getRouteName(route.name).match(regexpName)?.[1] ?? ''
-    }
-    // extract from path
-    if (route.path) {
-      return route.path.match(regexpPath)?.[1] ?? ''
-    }
-    return ''
-  }
+  // strategy is prefix_except_default or prefix_and_default
+  return route => router.resolve(route)
 }

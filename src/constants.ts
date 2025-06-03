@@ -19,28 +19,29 @@ export const STRATEGIES = {
   NO_PREFIX: STRATEGY_NO_PREFIX
 } as const
 
-export const DEFAULT_DYNAMIC_PARAMS_KEY = 'nuxtI18nInternal'
+export const DYNAMIC_PARAMS_KEY = 'nuxtI18nInternal'
 export const DEFAULT_COOKIE_KEY = 'i18n_redirected'
 export const SWITCH_LOCALE_PATH_LINK_IDENTIFIER = 'nuxt-i18n-slp'
+export const FULL_STATIC_LIFETIME = 60 * 60 * 24 // 1 day in seconds
 
 export const DEFAULT_OPTIONS = {
   restructureDir: 'i18n',
   experimental: {
     localeDetector: '',
-    switchLocalePathLinkSSR: false,
-    autoImportTranslationFunctions: false,
     typedPages: true,
     typedOptionsAndMessages: false,
-    generatedLocaleFilePathFormat: 'absolute',
-    alternateLinkCanonicalQueries: false,
-    hmr: true
+    alternateLinkCanonicalQueries: true,
+    devCache: false,
+    cacheLifetime: undefined,
+    stripMessagesPayload: false,
+    preload: false,
+    strictSeo: false
   },
   bundle: {
     compositionOnly: true,
     runtimeOnly: false,
     fullInstall: true,
-    dropMessageCompiler: false,
-    optimizeTranslationDirective: true
+    dropMessageCompiler: false
   },
   compilation: {
     strictMessage: true,
@@ -58,9 +59,9 @@ export const DEFAULT_OPTIONS = {
   trailingSlash: false,
   defaultLocaleRouteNameSuffix: 'default',
   strategy: STRATEGY_PREFIX_EXCEPT_DEFAULT,
-  lazy: false,
   langDir: 'locales',
   rootRedirect: undefined,
+
   detectBrowserLanguage: {
     alwaysRedirect: false,
     cookieCrossOrigin: false,
@@ -79,7 +80,9 @@ export const DEFAULT_OPTIONS = {
   types: 'composition',
   debug: false,
   parallelPlugin: false,
-  multiDomainLocales: false
+  multiDomainLocales: false,
+  hmr: true,
+  autoDeclare: true
 } as const
 
 export const NUXT_I18N_TEMPLATE_OPTIONS_KEY = 'i18n.options.mjs'

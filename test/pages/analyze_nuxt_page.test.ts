@@ -1,8 +1,8 @@
 import { test, expect } from 'vitest'
 import { analyzeNuxtPages } from '../../src/pages'
+import { createPageAnalyzeContext } from './utils'
 
 import type { NuxtPage } from '@nuxt/schema'
-import type { NuxtPageAnalyzeContext, AnalyzedNuxtPageMeta } from '../../src/pages'
 
 test('analyzeNuxtPages', () => {
   const pages: NuxtPage[] = [
@@ -101,91 +101,65 @@ test('analyzeNuxtPages', () => {
     }
   ]
 
-  const srcDir = '/path/to/nuxt-app'
-  const pagesDir = 'pages'
-  const ctx: NuxtPageAnalyzeContext = {
-    stack: [],
-    srcDir,
-    pagesDir,
-    pages: new Map<NuxtPage, AnalyzedNuxtPageMeta>()
-  }
-  analyzeNuxtPages(ctx, pages)
+  const ctx = createPageAnalyzeContext()
+  analyzeNuxtPages(ctx, ctx.pagesDir, pages)
 
   expect(ctx.stack.length).toBe(0)
   expect([...ctx.pages.values()]).toMatchInlineSnapshot(`
     [
       {
-        "inRoot": true,
         "name": "catch",
         "path": "[...catch]",
       },
       {
-        "inRoot": true,
         "name": undefined,
         "path": "account",
       },
       {
-        "inRoot": false,
         "name": "account-addresses",
         "path": "account/addresses",
       },
       {
-        "inRoot": false,
         "name": "account-fooid",
         "path": "account/foo[id]",
       },
       {
-        "inRoot": false,
         "name": "account",
         "path": "account/index",
       },
       {
-        "inRoot": false,
         "name": "account-profile",
         "path": "account/profile",
       },
       {
-        "inRoot": true,
         "name": "blog-date-slug",
         "path": "blog/[date]/[slug]",
       },
       {
-        "inRoot": true,
         "name": "foo",
         "path": "foo",
       },
       {
-        "inRoot": false,
         "name": "foo-bar",
         "path": "foo/bar",
       },
       {
-        "inRoot": false,
-        "name": "foo-bar",
-        "path": "foo/bar",
-      },
-      {
-        "inRoot": false,
         "name": "foo-bar-buz",
         "path": "foo/bar/buz",
       },
       {
-        "inRoot": false,
         "name": "foo-hoge-piyo",
         "path": "foo/hoge/[piyo]",
       },
       {
-        "inRoot": false,
         "name": "foo-qux",
         "path": "foo/qux",
       },
       {
-        "inRoot": true,
         "name": "index",
         "path": "index",
       },
       {
-        "inRoot": true,
         "name": "users-profile",
         "path": "users/[[profile]]",
       },

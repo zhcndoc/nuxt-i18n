@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { setTestContext, setup, useTestContext } from './utils'
 import { basicUsageTests } from './basic-usage-tests'
 import { languageSwitchingTests } from './language-switching-tests'
-import { startServerWithRuntimeConfig } from './helper'
+import { setServerRuntimeConfig } from './helper'
 
 describe('basic usage', async () => {
   await setup({
@@ -16,10 +16,7 @@ describe('basic usage', async () => {
           i18n: {
             baseUrl: 'http://localhost:3000',
             skipSettingLocaleOnNavigate: undefined,
-            detectBrowserLanguage: undefined,
-            experimental: {
-              alternateLinkCanonicalQueries: false
-            }
+            detectBrowserLanguage: undefined
           }
         }
       }
@@ -35,14 +32,17 @@ describe('basic usage', async () => {
   describe('language switching', async () => {
     beforeAll(async () => {
       setTestContext(ctx)
-      await startServerWithRuntimeConfig({
-        public: {
-          i18n: {
-            skipSettingLocaleOnNavigate: true,
-            detectBrowserLanguage: false
+      await setServerRuntimeConfig(
+        {
+          public: {
+            i18n: {
+              skipSettingLocaleOnNavigate: true,
+              detectBrowserLanguage: false
+            }
           }
-        }
-      })
+        },
+        true
+      )
     })
 
     languageSwitchingTests()

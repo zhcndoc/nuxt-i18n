@@ -15,11 +15,9 @@ import { prepareRuntimeConfig } from './prepare/runtime-config'
 import { prepareAutoImports } from './prepare/auto-imports'
 import { prepareBuildManifest } from './prepare/build-manifest'
 import { prepareStrategy } from './prepare/strategy'
-import { prepareLayers } from './prepare/layers'
 import { prepareTranspile } from './prepare/transpile'
 import { prepareVite } from './prepare/vite'
 import { prepareTypeGeneration } from './prepare/type-generation'
-import { initParser } from './utils/parse'
 
 export * from './types'
 
@@ -34,9 +32,7 @@ export default defineNuxtModule<NuxtI18nOptions>({
   },
   defaults: DEFAULT_OPTIONS,
   async setup(i18nOptions, nuxt) {
-    const ctx = createContext(i18nOptions, nuxt)
-
-    await initParser()
+    const ctx = createContext(i18nOptions)
 
     /**
      * prepare options
@@ -49,25 +45,46 @@ export default defineNuxtModule<NuxtI18nOptions>({
     prepareAutoImports(ctx)
 
     /**
-     * allow other modules to setup first in case these use i18n hooks
+     * setup module alias
+     */
+    setupAlias(ctx, nuxt)
+
+    /**
+     * transpile @nuxtjs/i18n
+     */
+    prepareTranspile(nuxt)
+
+    /**
+     * optimize deps
+     */
+    prepareVite(nuxt)
+
+    /**
+     * add plugin and templates
+     */
+    prepareRuntime(ctx, nuxt)
+
+    /**
+     * generate vue-i18n and messages types using runtime server endpoint
+     */
+    await prepareTypeGeneration(ctx, nuxt)
+
+    /**
+     * allow other modules to register i18n hooks, then merge locales
      */
     nuxt.hook('modules:done', async () => {
-      /**
-       * nuxt layers handling ...
-       */
-      await prepareLayers(ctx, nuxt)
-      /**
-       * setup runtime config
-       */
-      prepareRuntimeConfig(ctx, nuxt)
-
       /**
        * resolve locale info and vue-i18n config path
        */
       await resolveLocaleInfo(ctx, nuxt)
 
       /**
-       * setup nuxt/pages
+       * setup runtime config
+       */
+      prepareRuntimeConfig(ctx, nuxt)
+
+      /**
+       * setup nuxt pages
        */
       await setupPages(ctx, nuxt)
 
@@ -77,22 +94,7 @@ export default defineNuxtModule<NuxtI18nOptions>({
       prepareStrategy(ctx, nuxt)
 
       /**
-       * setup module alias
-       */
-      setupAlias(ctx, nuxt)
-
-      /**
-       * add plugin and templates
-       */
-      prepareRuntime(ctx, nuxt)
-
-      /**
-       * generate vue-i18n and messages types using runtime server endpoint
-       */
-      await prepareTypeGeneration(ctx, nuxt)
-
-      /**
-       * disable preloading/prefetching lazy loaded locales
+       * disable preloading/prefetching of locale files
        */
       prepareBuildManifest(ctx, nuxt)
 
@@ -105,16 +107,6 @@ export default defineNuxtModule<NuxtI18nOptions>({
        * setup nitro
        */
       await setupNitro(ctx, nuxt)
-
-      /**
-       * transpile @nuxtjs/i18n
-       */
-      prepareTranspile(nuxt)
-
-      /**
-       * optimize deps
-       */
-      prepareVite(nuxt)
     })
   }
 })
@@ -141,6 +133,7 @@ export interface ModuleRuntimeHooks {
     oldLocale: Locale
     newLocale: Locale
     initialSetup: boolean
+    /** @deprecated use `const context = useNuxtApp()` outside hook scope instead */
     context: Context
   }) => HookResult
 
@@ -155,11 +148,9 @@ declare module '#app' {
 declare module '@nuxt/schema' {
   interface NuxtConfig {
     ['i18n']?: Partial<UserNuxtI18nOptions>
-    /** @internal */ _i18nTest?: boolean
   }
   interface NuxtOptions {
     ['i18n']: UserNuxtI18nOptions
-    /** @internal */ _i18nTest?: boolean
   }
   interface NuxtHooks extends ModuleHooks {}
   interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}

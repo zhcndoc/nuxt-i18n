@@ -1,64 +1,94 @@
-import { useRuntimeConfig } from '#imports'
+import { stringify } from 'devalue'
 import { defineI18nMiddleware } from '@intlify/h3'
-import { localeCodes, vueI18nConfigs, localeLoaders } from '#internal/i18n/options.mjs'
-import { defineNitroPlugin } from 'nitropack/dist/runtime/plugin'
-import { localeDetector as _localeDetector } from '#internal/i18n/locale.detector.mjs'
-import { nuxtMock } from './utils'
-import { loadVueI18nOptions, loadInitialMessages, makeFallbackLocaleCodes, loadAndSetLocaleMessages } from '../messages'
+import { defineNitroPlugin, useRuntimeConfig } from 'nitropack/runtime'
+import { tryUseI18nContext, createI18nContext } from './context'
+import { createUserLocaleDetector } from './utils/locale-detector'
+import { pickNested } from './utils/messages-utils'
+import { createLocaleConfigs } from '../shared/locales'
+import { setupVueI18nOptions } from '../shared/vue-i18n'
+// @ts-expect-error virtual file
+import { appId } from '#internal/nuxt.config.mjs'
+import { localeDetector } from '#internal/i18n/locale.detector.mjs'
 
 import type { H3Event } from 'h3'
-import type { Locale, DefineLocaleMessage } from 'vue-i18n'
-import type { CoreContext } from '@intlify/h3'
+import type { CoreOptions } from '@intlify/core'
+import type { I18nPublicRuntimeConfig } from '#internal-i18n-types'
 
-// eslint-disable-next-line @typescript-eslint/no-misused-promises
 export default defineNitroPlugin(async nitro => {
-  // `defineI18nMiddleware` options (internally, options passed to`createCoreContext` in intlify / core) are compatible with vue-i18n options
-  const options = await loadVueI18nOptions(vueI18nConfigs, nuxtMock)
-  options.messages = options.messages || {}
-  const fallbackLocale = (options.fallbackLocale = options.fallbackLocale ?? false)
+  const runtime18n = useRuntimeConfig().public.i18n as I18nPublicRuntimeConfig
+  const defaultLocale: string = runtime18n.defaultLocale || ''
 
-  const runtimeI18n = useRuntimeConfig().public.i18n
-  const initialLocale = runtimeI18n.defaultLocale || options.locale || 'en-US'
+  const options = await setupVueI18nOptions(defaultLocale)
+  const localeConfigs = createLocaleConfigs(options.fallbackLocale)
 
-  // load initial locale messages for intlify/h3
-  options.messages = await loadInitialMessages(
-    options.messages,
-    localeLoaders,
-    {
-      localeCodes,
-      initialLocale,
-      lazy: runtimeI18n.lazy,
-      defaultLocale: runtimeI18n.defaultLocale,
-      fallbackLocale: options.fallbackLocale
-    },
-    nuxtMock
-  )
+  nitro.hooks.hook('request', async (event: H3Event) => {
+    event.context.nuxtI18n = createI18nContext()
+    event.context.nuxtI18n.localeConfigs = localeConfigs
+  })
 
-  const localeDetector = async (
-    event: H3Event,
-    i18nContext: CoreContext<string, DefineLocaleMessage>
-  ): Promise<Locale> => {
-    const locale = _localeDetector(event, {
-      defaultLocale: initialLocale,
-      fallbackLocale: options.fallbackLocale
-    })
-    if (runtimeI18n.lazy) {
-      if (fallbackLocale) {
-        const fallbackLocales = makeFallbackLocaleCodes(fallbackLocale, [locale])
-        await Promise.all(
-          fallbackLocales.map(locale => loadAndSetLocaleMessages(locale, localeLoaders, i18nContext.messages, nuxtMock))
-        )
+  nitro.hooks.hook('render:html', (htmlContext, { event }) => {
+    const ctx = tryUseI18nContext(event)
+    if (__I18N_PRELOAD__) {
+      if (ctx == null || Object.keys(ctx.messages ?? {}).length == 0) return
+
+      // only include the messages used in the current page
+      if (__I18N_STRIP_UNUSED__ && !__IS_SSG__) {
+        const trackedLocales = Object.keys(ctx.trackMap)
+        for (const locale of Object.keys(ctx.messages)) {
+          if (!trackedLocales.includes(locale)) {
+            ctx.messages[locale] = {}
+            continue
+          }
+
+          const usedKeys = Array.from(ctx.trackMap[locale])
+          ctx.messages[locale] = pickNested(usedKeys, ctx.messages[locale]) as unknown as Record<string, string>
+        }
       }
-      await loadAndSetLocaleMessages(locale, localeLoaders, i18nContext.messages, nuxtMock)
+
+      const stringified = stringify(ctx.messages)
+      if (import.meta.dev) {
+        const size = getStringSizeKB(stringified)
+        if (size > 10) {
+          console.log(
+            `Preloading a large messages object for ${Object.keys(ctx.messages).length} locales: ${size.toFixed(2)} KB`
+          )
+        }
+      }
+
+      try {
+        htmlContext.bodyAppend.unshift(
+          `<script type="application/json" data-nuxt-i18n="${appId}">${stringified}</script>`
+        )
+      } catch (_) {
+        console.log(_)
+      }
     }
-    return locale
+
+    if (__I18N_STRICT_SEO__) {
+      const raw = JSON.stringify(ctx?.slp ?? {})
+      const safe = raw
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029')
+      htmlContext.head.push(`<script type="application/json" data-nuxt-i18n-slp="${appId}">${safe}</script>`)
+    }
+  })
+
+  // enable server-side translations and user locale-detector
+  if (localeDetector != null) {
+    const options = await setupVueI18nOptions(defaultLocale)
+    const i18nMiddleware = defineI18nMiddleware({
+      ...(options as CoreOptions),
+      locale: createUserLocaleDetector(options.locale, options.fallbackLocale)
+    })
+
+    nitro.hooks.hook('request', i18nMiddleware.onRequest)
+    nitro.hooks.hook('afterResponse', i18nMiddleware.onAfterResponse)
   }
-
-  const { onRequest, onAfterResponse } = defineI18nMiddleware({
-    ...options,
-    locale: localeDetector
-  } as Parameters<typeof defineI18nMiddleware>[0])
-
-  nitro.hooks.hook('request', onRequest)
-  nitro.hooks.hook('afterResponse', onAfterResponse)
 })
+
+function getStringSizeKB(str: string): number {
+  const encoder = new TextEncoder()
+  const encoded = encoder.encode(str)
+  return encoded.length / 1024
+}

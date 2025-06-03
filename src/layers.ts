@@ -1,19 +1,15 @@
-import createDebug from 'debug'
-import { getLayerI18n, mergeConfigLocales, resolveVueI18nConfigInfo, formatMessage, getLocaleFiles } from './utils'
+import { useNuxt } from '@nuxt/kit'
+import { getLayerI18n, mergeConfigLocales, resolveVueI18nConfigInfo, getLocaleFiles, logger } from './utils'
 
-import { useLogger, useNuxt } from '@nuxt/kit'
 import { isAbsolute, parse, resolve } from 'pathe'
 import { assign, isString } from '@intlify/shared'
-import { NUXT_I18N_MODULE_ID } from './constants'
 
 import type { LocaleConfig } from './utils'
 import type { Nuxt, NuxtConfigLayer } from '@nuxt/schema'
-import type { LocaleObject, NuxtI18nOptions, VueI18nConfigPathInfo } from './types'
-
-const debug = createDebug('@nuxtjs/i18n:layers')
+import type { FileMeta, LocaleObject, NuxtI18nOptions } from './types'
+import type { I18nNuxtContext } from './context'
 
 export function checkLayerOptions(_options: NuxtI18nOptions, nuxt: Nuxt) {
-  const logger = useLogger(NUXT_I18N_MODULE_ID)
   const project = nuxt.options._layers[0]
   const layers = nuxt.options._layers
 
@@ -25,66 +21,45 @@ export function checkLayerOptions(_options: NuxtI18nOptions, nuxt: Nuxt) {
     const layerHint = `In ${configLocation} layer (\`${resolve(project.config.rootDir, layer.configFile)}\`) -`
 
     try {
-      // check `langDir` option
-      if (layerI18n.langDir) {
-        if (isString(layerI18n.langDir) && isAbsolute(layerI18n.langDir)) {
-          logger.warn(
-            `${layerHint} \`langDir\` is set to an absolute path (\`${layerI18n.langDir}\`) but should be set a path relative to \`srcDir\` (\`${layer.config.srcDir}\`). ` +
-              `Absolute paths will not work in production, see https://i18n.nuxtjs.org/options/lazy#langdir for more details.`
-          )
-        }
+      if (!layerI18n.langDir) continue
+      if (isString(layerI18n.langDir) && isAbsolute(layerI18n.langDir)) {
+        logger.warn(
+          `${layerHint} \`langDir\` is set to an absolute path (\`${layerI18n.langDir}\`) but should be set a path relative to \`srcDir\` (\`${layer.config.srcDir}\`). ` +
+            `Absolute paths will not work in production, see https://i18n.nuxtjs.org/docs/api/options#langdir for more details.`
+        )
+      }
 
-        for (const locale of layerI18n.locales ?? []) {
-          if (isString(locale)) {
-            throw new Error('When using the `langDir` option the `locales` must be a list of objects.')
-          }
-          if (locale.file || locale.files) continue
-          throw new Error(
-            'All locales must have the `file` or `files` property set when using `langDir`.\n' +
-              `Found none in:\n${JSON.stringify(locale, null, 2)}.`
-          )
+      for (const locale of layerI18n.locales ?? []) {
+        if (isString(locale)) {
+          throw new Error('When using the `langDir` option the `locales` must be a list of objects.')
         }
+        if (locale.file || locale.files) continue
+        throw new Error(
+          'All locales must have the `file` or `files` property set when using `langDir`.\n' +
+            `Found none in:\n${JSON.stringify(locale, null, 2)}.`
+        )
       }
     } catch (err) {
       if (!(err instanceof Error)) throw err
-      throw new Error(formatMessage(`${layerHint} ${err.message}`))
+      throw new Error(`[nuxt-i18n] ${layerHint} ${err.message}`)
     }
   }
 }
 
-export function mergeLayerPages(analyzer: (pathOverride: string) => void, nuxt: Nuxt) {
-  const project = nuxt.options._layers[0]
-  const layers = nuxt.options._layers
-
-  // No layers to merge
-  if (layers.length === 1) return
-
-  for (const l of layers) {
-    const lPath = resolve(project.config.rootDir, l.config.srcDir, l.config.dir?.pages ?? 'pages')
-    debug('mergeLayerPages: path ->', lPath)
-    analyzer(lPath)
-  }
-}
-
-export function resolveI18nDir(layer: NuxtConfigLayer, i18n: NuxtI18nOptions, fromRootDir: boolean = false) {
-  if (i18n.restructureDir !== false) {
-    return resolve(layer.config.rootDir, i18n.restructureDir ?? 'i18n')
-  }
-  return resolve(layer.config.rootDir, fromRootDir ? '' : layer.config.srcDir)
+export function resolveI18nDir(layer: NuxtConfigLayer, i18n: NuxtI18nOptions) {
+  return resolve(layer.config.rootDir, i18n.restructureDir ?? 'i18n')
 }
 
 function resolveLayerLangDir(layer: NuxtConfigLayer, i18n: NuxtI18nOptions) {
-  i18n.restructureDir ??= 'i18n'
-  i18n.langDir ??= i18n.restructureDir !== false ? 'locales' : ''
-  return resolve(resolveI18nDir(layer, i18n), i18n.langDir)
+  return resolve(resolveI18nDir(layer, i18n), i18n.langDir ?? 'locales')
 }
 
 /**
  * Merges `locales` configured by each layer and resolves the locale `files` to absolute paths.
  * This overwrites `options.locales`
  */
-export function applyLayerOptions(options: NuxtI18nOptions, nuxt: Nuxt) {
-  options.locales ??= []
+export function applyLayerOptions(ctx: I18nNuxtContext, nuxt: Nuxt) {
+  ctx.options.locales ??= []
 
   const configs: LocaleConfig[] = []
   for (const layer of nuxt.options._layers) {
@@ -98,7 +73,7 @@ export function applyLayerOptions(options: NuxtI18nOptions, nuxt: Nuxt) {
    * installing through `installModule` and should have absolute paths.
    */
   const installModuleConfigMap = new Map<string, LocaleConfig>()
-  outer: for (const locale of options.locales) {
+  outer: for (const locale of ctx.options.locales) {
     if (isString(locale)) continue
 
     const files = getLocaleFiles(locale)
@@ -119,18 +94,14 @@ export function applyLayerOptions(options: NuxtI18nOptions, nuxt: Nuxt) {
 
   configs.unshift(...installModuleConfigMap.values())
 
-  debug('merged locales', configs)
-  options.locales = mergeConfigLocales(configs)
+  ctx.options.locales = mergeConfigLocales(configs)
 }
 
-export async function resolveLayerVueI18nConfigInfo(options: NuxtI18nOptions) {
-  const logger = useLogger(NUXT_I18N_MODULE_ID)
-  const nuxt = useNuxt()
-
+export async function resolveLayerVueI18nConfigInfo(options: NuxtI18nOptions, nuxt = useNuxt()) {
   const resolved = await Promise.all(
     nuxt.options._layers.map(async layer => {
       const i18n = getLayerI18n(layer)
-      const i18nDirPath = resolveI18nDir(layer, i18n || {}, true)
+      const i18nDirPath = resolveI18nDir(layer, i18n || {})
       const res = await resolveVueI18nConfigInfo(i18nDirPath, i18n?.vueI18n)
 
       if (res == null && i18n?.vueI18n != null) {
@@ -147,5 +118,5 @@ export async function resolveLayerVueI18nConfigInfo(options: NuxtI18nOptions) {
     resolved.unshift(await resolveVueI18nConfigInfo(parse(options.vueI18n).dir, options.vueI18n))
   }
 
-  return resolved.filter((x): x is Required<VueI18nConfigPathInfo> => x != null)
+  return resolved.filter((x): x is Required<FileMeta> => x != null)
 }

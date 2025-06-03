@@ -1,24 +1,50 @@
-import { useNuxtApp, useCookie } from '#imports'
-import { ref } from 'vue'
-import { runtimeDetectBrowserLanguage, wrapComposable } from '../internal'
-import { localeCodes } from '#build/i18n.options.mjs'
+import { useNuxtApp, useCookie, useRuntimeConfig, useRequestEvent } from '#imports'
+import { ref, watch } from 'vue'
 import { _useLocaleHead, _useSetI18nParams } from '../routing/head'
-import { getRouteBaseName, localePath, localeRoute, switchLocalePath } from '../routing/routing'
+import { useComposableContext } from '../utils'
+import { localePath, localeRoute, switchLocalePath } from '../routing/routing'
 import type { Ref } from 'vue'
 import type { Locale } from 'vue-i18n'
-import type { resolveRoute } from '../routing/routing'
 import type { I18nHeadMetaInfo, I18nHeadOptions, SeoAttributesOptions } from '#internal-i18n-types'
-import type {
-  RouteLocationAsRelativeI18n,
-  RouteLocationRaw,
-  RouteLocationResolvedI18n,
-  RouteMap,
-  RouteMapI18n
-} from 'vue-router'
-import type { RouteLocationGenericPath, I18nRouteMeta } from '../types'
+import type { RouteLocationAsRelativeI18n, RouteLocationResolvedI18n, RouteMap, RouteMapI18n } from 'vue-router'
+import type { RouteLocationGenericPath, I18nRouteMeta, CompatRoute } from '../types'
 
 export * from 'vue-i18n'
 export * from './shared'
+
+declare module '#app' {
+  interface NuxtApp {
+    $localePath: LocalePathFunction
+    $localeRoute: LocaleRouteFunction
+    $routeBaseName: RouteBaseNameFunction
+    $switchLocalePath: SwitchLocalePathFunction
+    /**
+     * @deprecated use {@link useLocaleHead} instead
+     */
+    $localeHead: LocaleHeadFunction
+    /**
+     * @deprecated use {@link $routeBaseName} instead
+     */
+    $getRouteBaseName: RouteBaseNameFunction
+  }
+}
+
+declare module 'vue' {
+  interface ComponentCustomProperties {
+    $localePath: LocalePathFunction
+    $localeRoute: LocaleRouteFunction
+    $routeBaseName: RouteBaseNameFunction
+    $switchLocalePath: SwitchLocalePathFunction
+    /**
+     * @deprecated use {@link useLocaleHead} instead
+     */
+    $localeHead: LocaleHeadFunction
+    /**
+     * @deprecated use {@link $routeBaseName} instead
+     */
+    $getRouteBaseName: RouteBaseNameFunction
+  }
+}
 
 /**
  * Used to set i18n params for the current route.
@@ -30,37 +56,42 @@ export type SetI18nParamsFunction = (params: I18nRouteMeta) => void
 /**
  * Returns a {@link SetI18nParamsFunction} used to set i18n params for the current route.
  *
- * @param options - An options object, see {@link SeoAttributesOptions}.
- *
- * @returns a {@link SetI18nParamsFunction}.
+ * @param options - An {@link SeoAttributesOptions} object.
  */
 export function useSetI18nParams(seo?: SeoAttributesOptions): SetI18nParamsFunction {
-  return wrapComposable(_useSetI18nParams)(seo)
+  const common = useComposableContext()
+  return _useSetI18nParams(common, seo)
 }
 
 /**
  * Returns localized head properties for locale-related aspects.
  *
- * @param options - An options object, see {@link I18nHeadOptions}.
- *
- * @returns The localized head properties.
+ * @param options - An {@link I18nHeadOptions} object.
  */
 export type LocaleHeadFunction = (options: I18nHeadOptions) => I18nHeadMetaInfo
 
 /**
  * Returns localized head properties for locale-related aspects.
  *
- * @param options - An options object, see {@link I18nHeadOptions}
- *
- * @returns The localized {@link I18nHeadMetaInfo | head properties} with Vue `ref`.
+ * @param options - An {@link I18nHeadOptions} object
+ * @returns A ref with localized {@link I18nHeadMetaInfo | head properties}.
  */
-export function useLocaleHead({
-  dir = true,
-  lang = true,
-  seo = true,
-  key = 'hid'
-}: I18nHeadOptions = {}): Ref<I18nHeadMetaInfo> {
-  return wrapComposable(_useLocaleHead)({ dir, lang, seo, key })
+export function useLocaleHead({ dir = true, lang = true, seo = true }: I18nHeadOptions = {}): Ref<I18nHeadMetaInfo> {
+  if (__I18N_STRICT_SEO__) {
+    throw new Error(
+      'Strict SEO mode is enabled, `useLocaleHead` should not be used as localized head tags are handled internally by `@nuxtjs/i18n`'
+    )
+  }
+  const common = useComposableContext()
+  common.seoSettings = { dir, lang, seo }
+  const head = _useLocaleHead(common, common.seoSettings as Required<I18nHeadOptions>)
+
+  if (import.meta.client) {
+    watch(head, () => (common.metaState = head.value))
+  }
+  common.metaState = head.value
+
+  return head
 }
 
 /**
@@ -71,37 +102,34 @@ export function useLocaleHead({
  * the following would be the complete narrowed type
  * route: Name | RouteLocationAsRelativeI18n | RouteLocationAsStringI18n | RouteLocationAsPathI18n
  */
-
 type RouteLocationI18nGenericPath = Omit<RouteLocationAsRelativeI18n, 'path'> & { path?: string }
-
-/**
- * Revoles a localized route object for the passed route.
- *
- * @param route - a route name or route object.
- * @param locale - (default: current locale).
- *
- * @returns Localized route object
- *
- * @deprecated use {@link useLocalePath}/{@link LocalePathFunction $localePath} or {@link useLocaleRoute}/{@link LocaleRouteFunction $localeRoute} instead
- */
-export type ResolveRouteFunction = (route: RouteLocationRaw, locale?: Locale) => ReturnType<typeof resolveRoute>
 
 /**
  * Resolves the route base name for the given route.
  *
  * @param route - a route name or route object.
  *
- * @returns Route base name (without localization suffix) or `undefined` if no name was found.
+ * @returns Route base name without localization suffix or `undefined` if no name was found.
  */
 export type RouteBaseNameFunction = <Name extends keyof RouteMap = keyof RouteMap>(
   route: Name | RouteLocationGenericPath
-) => string | undefined
+) => keyof RouteMapI18n | undefined
 
 /**
  * Returns a {@link RouteBaseNameFunction} used get the base name of a route.
+ * @example
+ * ```ts
+ * const routeBaseName = useRouteBaseName()
+ * routeBaseName(route.value) // about-us
+ * routeBaseName('about-us__nl') // about-us
+ * ```
  */
 export function useRouteBaseName(): RouteBaseNameFunction {
-  return wrapComposable(getRouteBaseName)
+  const common = useComposableContext()
+  return route => {
+    if (route == null) return
+    return common.getRouteBaseName(route) || undefined
+  }
 }
 
 /**
@@ -110,7 +138,7 @@ export function useRouteBaseName(): RouteBaseNameFunction {
  * @param route - a route name or route object.
  * @param locale - (default: current locale).
  *
- * @returns Returns the localized URL for a given route.
+ * @returns Returns the localized path for the given route.
  */
 export type LocalePathFunction = <Name extends keyof RouteMapI18n = keyof RouteMapI18n>(
   route: Name | RouteLocationI18nGenericPath,
@@ -119,10 +147,16 @@ export type LocalePathFunction = <Name extends keyof RouteMapI18n = keyof RouteM
 
 /**
  * Returns a {@link LocalePathFunction} used to resolve a localized path.
+ * @example
+ * ```ts
+ * const localePath = useLocalePath()
+ * localePath('about-us', 'nl') // /nl/over-ons
+ * localePath({ name: 'about-us' }, 'nl') // /nl/over-ons
+ * ```
  */
 export function useLocalePath(): LocalePathFunction {
-  // @ts-expect-error - generated types conflict with the generic types we accept
-  return wrapComposable(localePath)
+  const common = useComposableContext()
+  return (route, locale) => localePath(common, route as CompatRoute, locale)
 }
 
 /**
@@ -131,7 +165,7 @@ export function useLocalePath(): LocalePathFunction {
  * @param route - a route name or route object.
  * @param locale - (default: current locale).
  *
- * @returns A route. if cannot resolve, `undefined` is returned.
+ * @returns A route or `undefined` if no route was resolved.
  */
 export type LocaleRouteFunction = <Name extends keyof RouteMapI18n = keyof RouteMapI18n>(
   route: Name | RouteLocationI18nGenericPath,
@@ -142,34 +176,8 @@ export type LocaleRouteFunction = <Name extends keyof RouteMapI18n = keyof Route
  * Returns a {@link LocaleRouteFunction} used to resolve localized route objects.
  */
 export function useLocaleRoute(): LocaleRouteFunction {
-  // @ts-expect-error - generated types conflict with the generic types we accept
-  return wrapComposable(localeRoute)
-}
-
-/**
- * Resolves a localized variant of the passed route.
- *
- * @param route - a route name or route object.
- * @param locale - (default: current locale).
- *
- * @returns A resolved route object
- *
- * @deprecated use {@link useLocaleRoute}/{@link LocaleRouteFunction $localeRoute} instead
- */
-export type LocaleLocationFunction = <Name extends keyof RouteMapI18n = keyof RouteMapI18n>(
-  route: Name | RouteLocationI18nGenericPath,
-  locale?: Locale
-) => RouteLocationResolvedI18n<Name> | undefined
-
-/**
- * Returns a {@link LocaleLocationFunction} used to resolve localized route objects.
- *
- * @deprecated use {@link useLocaleRoute}/{@link LocaleRouteFunction $localeRoute} instead
- */
-export function useLocaleLocation(): LocaleLocationFunction {
-  // we wrap `localeRoute` as the implementation is identical
-  // @ts-expect-error - generated types conflict with the generic types we accept
-  return wrapComposable(localeRoute)
+  const common = useComposableContext()
+  return (route, locale) => localeRoute(common, route as CompatRoute, locale)
 }
 
 /**
@@ -181,15 +189,22 @@ export type SwitchLocalePathFunction = (locale: Locale) => string
 
 /**
  * Returns a {@link SwitchLocalePathFunction} used to resolve a localized variant of the current path.
+ * @example
+ * ```ts
+ * const switchLocalePath = useSwitchLocalePath()
+ * switchLocalePath('en') // /about
+ * switchLocalePath('nl') // /nl/over-ons
+ * ```
  */
 export function useSwitchLocalePath(): SwitchLocalePathFunction {
-  return wrapComposable(switchLocalePath)
+  const common = useComposableContext()
+  return locale => switchLocalePath(common, locale)
 }
 
 /**
  * Return the browser locale based on `navigator.languages` (client-side) or `accept-language` header (server-side).
  *
- * @returns the browser locale, if not detected, return `null`.
+ * @returns the browser locale or `null` if none detected.
  */
 export function useBrowserLocale(): string | null {
   return useNuxtApp().$i18n.getBrowserLocale() || null
@@ -198,18 +213,18 @@ export function useBrowserLocale(): string | null {
 /**
  * Returns the locale cookie based on `document.cookie` (client-side) or `cookie` header (server-side).
  *
- * @returns a `Ref<string>` with the detected cookie or an empty string if none is detected or if `detectBrowserLanguage.useCookie` is disabled.
+ * @returns a ref with the detected cookie or an empty string if none is detected or if `detectBrowserLanguage.useCookie` is disabled.
  */
 export function useCookieLocale(): Ref<string> {
   const locale: Ref<string> = ref('')
-  const detect = runtimeDetectBrowserLanguage()
+  const detect = useRuntimeConfig().public.i18n.detectBrowserLanguage
 
   if (!detect || !detect.useCookie) {
     return locale
   }
-
-  const code = useCookie(detect.cookieKey!).value
-  if (code && localeCodes.includes(code)) {
+  const locales = useComposableContext().getLocales()
+  const code = useCookie(detect.cookieKey).value
+  if (code && locales.some(x => x.code === code)) {
     locale.value = code
   }
 
@@ -229,9 +244,7 @@ const warnRuntimeUsage = (method: string) =>
  */
 export interface I18nRoute {
   /**
-   * Customize page component routes per locale.
-   *
-   * @description You can specify static and dynamic paths for vue-router.
+   * Customize page component routes per locale, you can specify static and dynamic paths.
    */
   paths?: Partial<Record<Locale, `/${string}`>>
   /**
@@ -249,5 +262,40 @@ export interface I18nRoute {
 export function defineI18nRoute(route: I18nRoute | false): void {
   if (import.meta.dev) {
     warnRuntimeUsage('defineI18nRoute')
+  }
+}
+
+/**
+ * Register translation keys for preloading
+ *
+ * This is used to track keys to include in the preloaded messages which
+ * otherwise would not be included during SSR.
+ *
+ * Examples of keys to register are dynamically or conditionally rendered translations (e.g. inside `v-if` or using computed keys).
+ *
+ * @param keys - The translation keys to preload
+ *
+ * @example
+ * ```ts
+ * useI18nPreloadKeys(['my-dynamic-key', 'nested.dynamic.key'])
+ * ```
+ */
+export function useI18nPreloadKeys(keys: string[]): void {
+  if (import.meta.server) {
+    const ctx = useRequestEvent()?.context?.nuxtI18n
+    if (ctx == null) {
+      console.warn('useI18nPreloadKeys(): `nuxtI18n` server context is accessible.')
+      return
+    }
+
+    const locale = useComposableContext().getLocale()
+    if (!locale) {
+      console.warn('useI18nPreloadKeys(): Could not resolve locale during server-side render.')
+      return
+    }
+
+    for (const k of keys) {
+      ctx?.trackKey(k, locale)
+    }
   }
 }

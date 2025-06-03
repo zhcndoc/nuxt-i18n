@@ -1,23 +1,10 @@
 <script setup lang="ts">
-import { watchEffect } from 'vue'
-import { useAsyncData, useHead, useRouter } from '#imports'
+import { useHead } from '#imports'
 import { useI18n, useLocalePath, useLocaleHead } from '#i18n'
-import BasicUsage from '../components/BasicUsage.vue'
-import LangSwitcher from '../components/LangSwitcher.vue'
 
 const { t, locale } = useI18n()
 const localePath = useLocalePath()
-const i18nHead = useLocaleHead({ key: 'id', seo: { canonicalQueries: ['page'] } })
-const { data, refresh } = useAsyncData(`home-${locale.value}`, () =>
-  Promise.resolve({
-    aboutPath: localePath('about'),
-    aboutTranslation: t('about')
-  })
-)
-
-watchEffect(() => {
-  refresh()
-})
+const i18nHead = useLocaleHead({ seo: { canonicalQueries: ['page'] } })
 
 useHead(() => ({
   title: t('home'),
@@ -36,11 +23,6 @@ useHead(() => ({
     <div id="welcome-text">{{ t('welcome') }}</div>
     <BasicUsage />
     <LangSwitcher />
-    <section>
-      <strong>resolve with <code>useAsyncData</code></strong
-      >:
-      <code id="home-use-async-data">{{ data }}</code>
-    </section>
     <section>
       <strong><code>useHead</code> with <code>useLocaleHead</code></strong
       >:
