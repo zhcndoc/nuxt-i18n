@@ -1,4 +1,4 @@
-import { useNuxtI18nContext } from '../context'
+import { useNuxtI18nContext, useResolvedLocale } from '../context'
 import { detectLocale, loadAndSetLocale, navigate } from '../utils'
 import { addRouteMiddleware, defineNuxtPlugin, defineNuxtRouteMiddleware, useNuxtApp } from '#imports'
 
@@ -9,7 +9,10 @@ export default defineNuxtPlugin({
     const nuxt = useNuxtApp()
     const ctx = useNuxtI18nContext(nuxt)
 
-    await nuxt.runWithContext(() => loadAndSetLocale(detectLocale(nuxt.$router.currentRoute.value)))
+    const resolvedLocale = useResolvedLocale()
+    await nuxt.runWithContext(() =>
+      loadAndSetLocale((ctx.initial && resolvedLocale.value) || detectLocale(nuxt.$router.currentRoute.value))
+    )
 
     // no pages or no prefixes - do not register route middleware
     if (!__I18N_ROUTING__) return
@@ -19,7 +22,7 @@ export default defineNuxtPlugin({
       defineNuxtRouteMiddleware(async to => {
         const locale = await nuxt.runWithContext(() => loadAndSetLocale(detectLocale(to)))
 
-        ctx.firstAccess = false
+        ctx.initial = false
 
         return nuxt.runWithContext(() => navigate(to, locale))
       }),

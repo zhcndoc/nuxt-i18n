@@ -1,28 +1,35 @@
 import { stringify } from 'devalue'
 import { defineI18nMiddleware } from '@intlify/h3'
-import { defineNitroPlugin, useRuntimeConfig } from 'nitropack/runtime'
+import { defineNitroPlugin, useStorage } from 'nitropack/runtime'
 import { tryUseI18nContext, createI18nContext } from './context'
 import { createUserLocaleDetector } from './utils/locale-detector'
 import { pickNested } from './utils/messages-utils'
-import { createLocaleConfigs } from '../shared/locales'
+import { createLocaleConfigs, getDefaultLocaleForDomain } from '../shared/locales'
 import { setupVueI18nOptions } from '../shared/vue-i18n'
 // @ts-expect-error virtual file
 import { appId } from '#internal/nuxt.config.mjs'
 import { localeDetector } from '#internal/i18n/locale.detector.mjs'
+import { useRuntimeI18n } from '../shared/utils'
 
-import type { H3Event } from 'h3'
+import { getRequestURL, type H3Event } from 'h3'
 import type { CoreOptions } from '@intlify/core'
-import type { I18nPublicRuntimeConfig } from '#internal-i18n-types'
+
+const getHost = (event: H3Event) => getRequestURL(event, { xForwardedHost: true }).host
 
 export default defineNitroPlugin(async nitro => {
-  const runtime18n = useRuntimeConfig().public.i18n as I18nPublicRuntimeConfig
-  const defaultLocale: string = runtime18n.defaultLocale || ''
+  const runtimeI18n = useRuntimeI18n()
+  const defaultLocale: string = runtimeI18n.defaultLocale || ''
 
-  const options = await setupVueI18nOptions(defaultLocale)
-  const localeConfigs = createLocaleConfigs(options.fallbackLocale)
+  // clear cache for i18n handlers on startup
+  const cacheStorage = useStorage('cache')
+  const cachedKeys = await cacheStorage.getKeys('nitro:handlers:i18n')
+  await Promise.all(cachedKeys.map(key => cacheStorage.removeItem(key)))
 
   nitro.hooks.hook('request', async (event: H3Event) => {
+    const options = await setupVueI18nOptions(getDefaultLocaleForDomain(getHost(event)) || defaultLocale)
+    const localeConfigs = createLocaleConfigs(options.fallbackLocale)
     event.context.nuxtI18n = createI18nContext()
+    event.context.nuxtI18n.vueI18nOptions = options
     event.context.nuxtI18n.localeConfigs = localeConfigs
   })
 
@@ -45,19 +52,9 @@ export default defineNitroPlugin(async nitro => {
         }
       }
 
-      const stringified = stringify(ctx.messages)
-      if (import.meta.dev) {
-        const size = getStringSizeKB(stringified)
-        if (size > 10) {
-          console.log(
-            `Preloading a large messages object for ${Object.keys(ctx.messages).length} locales: ${size.toFixed(2)} KB`
-          )
-        }
-      }
-
       try {
         htmlContext.bodyAppend.unshift(
-          `<script type="application/json" data-nuxt-i18n="${appId}">${stringified}</script>`
+          `<script type="application/json" data-nuxt-i18n="${appId}">${stringify(ctx.messages)}</script>`
         )
       } catch (_) {
         console.log(_)
@@ -86,9 +83,3 @@ export default defineNitroPlugin(async nitro => {
     nitro.hooks.hook('afterResponse', i18nMiddleware.onAfterResponse)
   }
 })
-
-function getStringSizeKB(str: string): number {
-  const encoder = new TextEncoder()
-  const encoded = encoder.encode(str)
-  return encoded.length / 1024
-}

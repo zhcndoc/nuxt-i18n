@@ -1,10 +1,6 @@
 import { isEqual, joinURL, withoutTrailingSlash, withTrailingSlash } from 'ufo'
 import { isFunction, isString } from '@intlify/shared'
-import { navigateTo, useHead, useNuxtApp, useRouter } from '#imports'
-import { vueI18nConfigs } from '#build/i18n.options.mjs'
-import { getComposer } from './compatibility'
-import { getDefaultLocaleForDomain } from './domain'
-import { loadVueI18nOptions } from './shared/messages'
+import { navigateTo, useHead, useNuxtApp, useRequestEvent, useRequestURL, useRouter } from '#imports'
 import { createLocaleRouteNameGetter, createLocalizedRouteByPathResolver } from './routing/utils'
 import { getRouteBaseName } from '#i18n-kit/routing'
 import {
@@ -15,8 +11,9 @@ import {
   type RouteLikeWithPath
 } from './routing/routing'
 import { useNuxtI18nContext } from './context'
+import { getDefaultLocaleForDomain, isSupportedLocale } from './shared/locales'
 
-import type { Locale, I18nOptions } from 'vue-i18n'
+import type { Locale } from 'vue-i18n'
 import type { NuxtApp } from '#app'
 import type { RouteLocationPathRaw, Router, RouteRecordNameGeneric } from 'vue-router'
 import type {
@@ -27,6 +24,8 @@ import type {
   LocaleObject
 } from '#internal-i18n-types'
 import type { CompatRoute, I18nRouteMeta, RouteLocationGenericPath } from './types'
+import { useDetectors } from './shared/detection'
+import { useI18nDetection } from './shared/utils'
 
 /**
  * Common options used internally by composable functions, these
@@ -46,10 +45,10 @@ export type ComposableContext = {
   head: ReturnType<typeof useHead>
   metaState: Required<I18nHeadMetaInfo>
   seoSettings: I18nHeadOptions
+  localePathPayload: Record<string, Record<string, string> | false>
   getLocale: () => string
   getLocales: () => LocaleObject[]
   getBaseUrl: () => string
-  getSLP: () => Record<string, Record<string, string> | false>
   /** Extracts the route base name (without locale suffix) */
   getRouteBaseName: (route: RouteRecordNameGeneric | RouteLocationGenericPath | null) => string | undefined
   /** Modifies the resolved localized path. Middleware for `switchLocalePath` */
@@ -75,9 +74,10 @@ export function useComposableContext(): ComposableContext {
 }
 const formatTrailingSlash = __TRAILING_SLASH__ ? withTrailingSlash : withoutTrailingSlash
 export function createComposableContext(): ComposableContext {
-  const router = useRouter()
   const ctx = useNuxtI18nContext()
+  const router = useRouter()
   const nuxtApp = useNuxtApp()
+  const detectors = useDetectors(useRequestEvent(), useI18nDetection())
   const defaultLocale = ctx.getDefaultLocale()
   const routeByPathResolver = createLocalizedRouteByPathResolver(router)
   const getLocalizedRouteName = createLocaleRouteNameGetter(defaultLocale)
@@ -111,11 +111,6 @@ export function createComposableContext(): ComposableContext {
     return route
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const slp: Record<string, Record<string, string> | false> = import.meta.client
-    ? JSON.parse(document.querySelector(`[data-nuxt-i18n-slp="${nuxtApp._id}"]`)?.textContent ?? '{}')
-    : {}
-
   const composableCtx: ComposableContext = {
     router,
     head: useHead({}),
@@ -125,7 +120,7 @@ export function createComposableContext(): ComposableContext {
       lang: __I18N_STRICT_SEO__,
       seo: __I18N_STRICT_SEO__
     },
-    getSLP: () => slp,
+    localePathPayload: getLocalePathPayload(),
     routingOptions: {
       defaultLocale: defaultLocale,
       strictCanonicals: ctx.config.experimental.alternateLinkCanonicalQueries ?? true,
@@ -138,8 +133,8 @@ export function createComposableContext(): ComposableContext {
     getRouteLocalizedParams: () =>
       (router.currentRoute.value.meta[__DYNAMIC_PARAMS_KEY__] ?? {}) as Partial<I18nRouteMeta>,
     getLocalizedDynamicParams: locale => {
-      if (__I18N_STRICT_SEO__ && import.meta.client && nuxtApp.isHydrating && slp) {
-        return slp[locale] || {}
+      if (__I18N_STRICT_SEO__ && import.meta.client && nuxtApp.isHydrating && composableCtx.localePathPayload) {
+        return composableCtx.localePathPayload[locale] || {}
       }
       return composableCtx.getRouteLocalizedParams()?.[locale]
     },
@@ -151,8 +146,8 @@ export function createComposableContext(): ComposableContext {
 
       // remove prefix if path is default for domain
       if (__MULTI_DOMAIN_LOCALES__ && __I18N_STRATEGY__ === 'prefix_except_default') {
-        const defaultLocale = getDefaultLocaleForDomain()
-        if (locale !== defaultLocale || ctx.getRouteLocale(path) !== defaultLocale) {
+        const defaultLocale = getDefaultLocaleForDomain(useRequestURL({ xForwardedHost: true }).host)
+        if (locale !== defaultLocale || detectors.route(path) !== defaultLocale) {
           return path
         }
 
@@ -174,6 +169,11 @@ export function createComposableContext(): ComposableContext {
   return composableCtx
 }
 
+function getLocalePathPayload(nuxtApp = useNuxtApp()) {
+  const payload = import.meta.client && document.querySelector(`[data-nuxt-i18n-slp="${nuxtApp._id}"]`)?.textContent
+  return JSON.parse(payload || '{}') as Record<string, Record<string, string> | false>
+}
+
 declare global {
   interface Window {
     _i18nSlp: Record<string, Record<string, unknown> | false> | undefined
@@ -186,18 +186,18 @@ export async function loadAndSetLocale(locale: Locale): Promise<string> {
   const oldLocale = ctx.getLocale()
 
   // skip if locale is already set
-  if (locale === oldLocale && !ctx.firstAccess) {
+  if (locale === oldLocale && !ctx.initial) {
     return locale
   }
 
-  const data = { oldLocale, newLocale: locale, initialSetup: ctx.firstAccess, context: nuxt }
+  const data = { oldLocale, newLocale: locale, initialSetup: ctx.initial, context: nuxt }
   let override = (await nuxt.callHook('i18n:beforeLocaleSwitch', data)) as string | undefined
   if (override != null && import.meta.dev) {
     console.warn('[nuxt-i18n] Do not return in `i18n:beforeLocaleSwitch`, mutate `data.newLocale` instead.')
   }
   override ??= data.newLocale
 
-  if (ctx.isSupportedLocale(override)) {
+  if (isSupportedLocale(override)) {
     locale = override
   }
 
@@ -207,7 +207,7 @@ export async function loadAndSetLocale(locale: Locale): Promise<string> {
   return locale
 }
 
-function skipDetect(detect: DetectBrowserLanguageOptions, path: string, pathLocale: string): boolean {
+function skipDetect(detect: DetectBrowserLanguageOptions, path: string, pathLocale: string | undefined): boolean {
   // no routes - force detection
   if (!__I18N_ROUTING__) {
     return false
@@ -219,7 +219,7 @@ function skipDetect(detect: DetectBrowserLanguageOptions, path: string, pathLoca
   }
 
   // detection only on unprefixed route
-  if (detect.redirectOn === 'no prefix' && !detect.alwaysRedirect && pathLocale) {
+  if (detect.redirectOn === 'no prefix' && !detect.alwaysRedirect && isSupportedLocale(pathLocale)) {
     return true
   }
 
@@ -228,27 +228,30 @@ function skipDetect(detect: DetectBrowserLanguageOptions, path: string, pathLoca
 
 export function detectLocale(route: string | CompatRoute): string {
   const nuxtApp = useNuxtApp()
-  const path = isString(route) ? route : route.path
+  const detectConfig = useI18nDetection()
+  const detectors = useDetectors(useRequestEvent(), detectConfig)
   const ctx = useNuxtI18nContext(nuxtApp)
+  const path = isString(route) ? route : route.path
 
   function* detect() {
-    if (ctx.firstAccess && ctx.detection.enabled && !skipDetect(ctx.detection, path, ctx.getRouteLocale(path))) {
-      yield ctx.getCookieLocale()
-      yield ctx.getBrowserLocale() // navigator or header
-      yield ctx.detection.fallbackLocale
+    if (ctx.initial && detectConfig.enabled && !skipDetect(detectConfig, path, detectors.route(path))) {
+      yield detectors.cookie()
+      yield detectors.header()
+      yield detectors.navigator()
+      yield detectConfig.fallbackLocale
     }
 
     if (__DIFFERENT_DOMAINS__ || __MULTI_DOMAIN_LOCALES__) {
-      yield ctx.getDomainLocale(path)
+      yield detectors.host(path)
     }
 
     if (__I18N_ROUTING__) {
-      yield ctx.getRouteLocale(route)
+      yield detectors.route(route)
     }
   }
 
   for (const detected of detect()) {
-    if (detected) {
+    if (detected && isSupportedLocale(detected)) {
       return detected
     }
   }
@@ -272,7 +275,8 @@ export function navigate(to: CompatRoute, locale: string) {
   }
 
   // skip - redirection optional prevents prefix removal, reconsider if needed (#2288)
-  if (ctx.getRouteLocale(to) === locale) {
+  const detectors = useDetectors(useRequestEvent(), useI18nDetection())
+  if (detectors.route(to) === locale) {
     return
   }
 
@@ -316,93 +320,4 @@ export function createBaseUrlGetter(
 
     return baseUrl ?? ''
   }
-}
-
-// collect unique keys of passed objects
-function uniqueKeys(...objects: Array<Record<string, unknown>>): string[] {
-  const keySet = new Set<string>()
-
-  for (const obj of objects) {
-    for (const key of Object.keys(obj)) {
-      keySet.add(key)
-    }
-  }
-
-  return Array.from(keySet)
-}
-
-// HMR helper functionality
-export function createNuxtI18nDev() {
-  const ctx = useNuxtI18nContext()
-  const composer = getComposer(ctx.vueI18n)
-
-  // helper function to compare old and new vue-i18n configs
-  function deepEqual<T extends Record<string, unknown>, K extends keyof T>(a: T, b: T, ignoreKeys: K[] = []) {
-    if (a === b) return true
-    if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') return false
-
-    // top-level keys excluding ignoreKeys
-    const keysA = Object.keys(a).filter(k => !ignoreKeys.includes(k as K))
-    const keysB = Object.keys(b).filter(k => !ignoreKeys.includes(k as K))
-
-    if (keysA.length !== keysB.length) return false
-
-    for (const key of keysA) {
-      if (!keysB.includes(key)) return false
-      const valA = a[key]
-      const valB = b[key]
-      // compare functions stringified
-      if (typeof valA === 'function' && typeof valB === 'function') {
-        if (valA.toString() !== valB.toString()) {
-          return false
-        }
-      }
-      // nested recursive check (no ignoring at deeper levels)
-      else if (typeof valA === 'object' && typeof valB === 'object') {
-        if (!deepEqual(valA as unknown as T, valB as unknown as T)) {
-          return false
-        }
-      }
-      // primitive value check
-      else if (valA !== valB) {
-        return false
-      }
-    }
-    return true
-  }
-
-  /**
-   * Triggers a reload of vue-i18n configs (if needed) and locale message files in the correct order
-   *
-   * @param locale only passed when a locale file has been changed, if `undefined` indicates a vue-i18n config change
-   */
-  async function resetI18nProperties(locale?: string) {
-    const opts: I18nOptions = await loadVueI18nOptions(vueI18nConfigs)
-
-    const messageLocales = uniqueKeys(opts.messages!, composer.messages.value)
-    for (const k of messageLocales) {
-      if (locale && k !== locale) continue
-
-      if (opts?.messages && k in opts.messages) {
-        composer.setLocaleMessage(k, opts?.messages[k] ?? {})
-      }
-
-      await ctx.loadMessages(k)
-    }
-
-    // skip vue-i18n config properties if locale is passed (locale file HMR)
-    if (locale != null) return
-
-    const numberFormatLocales = uniqueKeys(opts.numberFormats || {}, composer.numberFormats.value)
-    for (const k of numberFormatLocales) {
-      composer.setNumberFormat(k, opts.numberFormats?.[k] || {})
-    }
-
-    const datetimeFormatsLocales = uniqueKeys(opts.datetimeFormats || {}, composer.datetimeFormats.value)
-    for (const k of datetimeFormatsLocales) {
-      composer.setDateTimeFormat(k, opts.datetimeFormats?.[k] || {})
-    }
-  }
-
-  return { resetI18nProperties, deepEqual }
 }
