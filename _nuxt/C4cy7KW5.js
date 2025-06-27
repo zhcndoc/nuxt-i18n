@@ -1,0 +1,1 @@
+import{r as t}from"./CftCMp9c.js";import n from"./BukjiaBi.js";import{R as s,b as a,o as e,s as i,y as p}from"./wosf504V.js";import"./C2bHYaEW.js";const d={__name:"Note",setup(c){const o=s();return(r,f)=>(e(),a(n,{color:"info",icon:p(o).ui.icons.info},{default:i(()=>[t(r.$slots,"default",{mdcUnwrap:"p"})]),_:3},8,["icon"]))}};export{d as default};
