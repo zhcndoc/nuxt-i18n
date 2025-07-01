@@ -1,0 +1,1 @@
+import{aX as t,b6 as u}from"./C9OICr7a.js";function r(){t();function o({title:e="",description:a="",headline:s=""}){u({title:e,ogTitle:e,description:a,ogDescription:a})}return{setPageMeta:o}}export{r as u};
