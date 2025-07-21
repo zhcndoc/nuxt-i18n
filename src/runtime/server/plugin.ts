@@ -109,7 +109,9 @@ export default defineNitroPlugin(async nitro => {
 
     let resolvedPath = undefined
     let redirectCode = 302
-    if (rootRedirect && event.path === '/') {
+
+    const requestURL = getRequestURL(event)
+    if (rootRedirect && requestURL.pathname === '/') {
       locale = (detection.enabled && locale) || defaultLocale
       resolvedPath =
         (isSupportedLocale(detector.route(rootRedirect.path)) && rootRedirect.path) ||
@@ -121,7 +123,7 @@ export default defineNitroPlugin(async nitro => {
 
     switch (detection.redirectOn) {
       case 'root':
-        if (event.path !== '/') break
+        if (requestURL.pathname !== '/') break
       // fallthrough (root has no prefix)
       case 'no prefix':
         if (pathLocale) break
@@ -131,16 +133,16 @@ export default defineNitroPlugin(async nitro => {
         break
     }
 
-    if (event.path === '/' && __I18N_STRATEGY__ === 'prefix') {
+    if (requestURL.pathname === '/' && __I18N_STRATEGY__ === 'prefix') {
       resolvedPath ??= getLocalizedMatch(defaultLocale)
     }
-
     return { path: resolvedPath, code: redirectCode, locale }
   }
 
   const baseUrlGetter = createBaseUrlGetter()
   nitro.hooks.hook('request', async (event: H3Event) => {
     const options = await setupVueI18nOptions(getDefaultLocaleForDomain(getHost(event)) || _defaultLocale)
+    const url = getRequestURL(event)
     const ctx = createI18nContext()
     event.context.nuxtI18n = ctx
 
@@ -148,18 +150,22 @@ export default defineNitroPlugin(async nitro => {
       const detector = useDetectors(event, detection)
       const localeSegment = detector.route(event.path)
       const pathLocale = (isSupportedLocale(localeSegment) && localeSegment) || undefined
-      const path = (pathLocale && event.path.slice(pathLocale.length + 1)) || event.path
+      const path = (pathLocale && url.pathname.slice(pathLocale.length + 1)) || url.pathname
 
       // attempt to only run i18n detection for nuxt pages and i18n server routes
-      if (!event.path.includes('/_i18n/') && !isExistingNuxtRoute(path)) {
+      if (!url.pathname.includes('/_i18n/') && !isExistingNuxtRoute(path)) {
         return
       }
 
       const resolved = resolveRedirectPath(event, path, pathLocale, options.defaultLocale, detector)
-      if (resolved.path) {
+      if (resolved.path && resolved.path !== url.pathname) {
         ctx.detectLocale = resolved.locale
         detection.useCookie && setCookie(event, detection.cookieKey, resolved.locale, cookieOptions)
-        await sendRedirect(event, joinURL(baseUrlGetter(event, options.defaultLocale), resolved.path), resolved.code)
+        await sendRedirect(
+          event,
+          joinURL(baseUrlGetter(event, options.defaultLocale), resolved.path + url.search),
+          resolved.code
+        )
         return
       }
     }
