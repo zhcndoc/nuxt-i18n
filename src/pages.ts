@@ -306,7 +306,6 @@ function getRouteFromConfig(
   const pageMeta = ctx.pages.get(route.file!)
 
   if (pageMeta == null) {
-    console.warn(`[nuxt-i18n] No custom route config found for ${route.path}`)
     return undefined
   }
 
