@@ -1,0 +1,1 @@
+import{aW as t,b5 as u}from"./BH2rL7Af.js";function r(){t();function o({title:e="",description:a="",headline:s=""}){u({title:e,ogTitle:e,description:a,ogDescription:a})}return{setPageMeta:o}}export{r as u};
