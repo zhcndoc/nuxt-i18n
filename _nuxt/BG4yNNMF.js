@@ -1,0 +1,1 @@
+import{a_ as u,aX as a,n as p,b6 as r}from"#entry";function c(o={}){const e=u(),n=a().path||"/";if(e.payload.path===n){const s=p(!1);s.value=!0}}function f(o,e={},t={}){return c({...t})}function g(){a();function o({title:e="",description:t="",headline:n=""}){r({title:e,ogTitle:e,description:t,ogDescription:t}),f("Docs",{})}return{setPageMeta:o}}export{g as u};
