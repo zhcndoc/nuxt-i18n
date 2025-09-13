@@ -232,6 +232,7 @@ describe('basic usage', async () => {
         waitForLocaleNetwork(page, 'fr', 'response'),
         page.click(`#switch-locale-path-usages .switch-to-fr a`)
       ])
+      await page.waitForTimeout(100)
 
       expect(await page.locator('#snake-case').innerText()).toEqual('À-propos-de-ce-site')
       expect(await page.locator('#pascal-case').innerText()).toEqual('ÀProposDeCeSite')
@@ -650,6 +651,14 @@ describe('basic usage', async () => {
       await page.waitForURL(url('/nl/products/rode-mok'))
       expect(await page.locator('#switch-locale-path-link-en').getAttribute('href')).toEqual('/products/red-mug')
     })
+
+    test('(#3790) RegExp missingWarn', async () => {
+      const { page } = await renderPage('/')
+
+      // @ts-expect-error runtime types
+      expect(await page.evaluate(() => window.useNuxtApp?.().$i18n.missingWarn)).toMatchInlineSnapshot(`/\\^foo/`)
+    })
+
     ctx = useTestContext()
   })
 
@@ -697,6 +706,12 @@ describe('basic usage', async () => {
 
       // current locale
       expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('en')
+    })
+
+    test('(#3766) persists locale after hydration', async () => {
+      const { page } = await renderPage('/fr')
+      await page.waitForFunction(() => !window.useNuxtApp?.().isHydrating)
+      expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
     })
 
     test('retains query parameters', async () => {

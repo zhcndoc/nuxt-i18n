@@ -3,10 +3,12 @@ packages:
   - playground
   - specs/fixtures/*
   - specs/fixtures/issues/*
+
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - '@tailwindcss/oxide'
   - better-sqlite3
   - esbuild
+  - oxc-resolver
   - sharp
   - vue-demi
