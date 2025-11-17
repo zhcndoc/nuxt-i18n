@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Utility type to pick properties from an object based on a list of keys,
  */
@@ -58,9 +59,7 @@ export function setNestedValue<T extends object, K extends string, V = any>(obj:
   // Iterate over all parts except the last one
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!
-    if (!current[part]) {
-      current[part] = {} // Create nested object if it doesn't exist
-    }
+    current[part] ||= {} // Create nested object if it doesn't exist
     current = current[part]
   }
 

@@ -1,6 +1,6 @@
-import { computed, getCurrentScope, onScopeDispose, ref, useHead, useRequestEvent, watch, type Ref } from '#imports'
+import { type Ref, computed, getCurrentScope, onScopeDispose, ref, useHead, useRequestEvent, watch } from '#imports'
 import { assign } from '@intlify/shared'
-import { localeHead as _localeHead, type HeadContext } from '#i18n-kit/head'
+import { type HeadContext, localeHead as _localeHead } from '#i18n-kit/head'
 
 import type { I18nHeadMetaInfo, I18nHeadOptions, SeoAttributesOptions } from '#internal-i18n-types'
 import type { ComposableContext } from '../utils'
@@ -12,7 +12,7 @@ function createHeadContext(
   config: Required<I18nHeadOptions>,
   locale = ctx.getLocale(),
   locales = ctx.getLocales(),
-  baseUrl = ctx.getBaseUrl()
+  baseUrl = ctx.getBaseUrl(),
 ): HeadContext {
   const currentLocale = locales.find(l => l.code === locale) || { code: locale }
   const canonicalQueries = (typeof config.seo === 'object' && config.seo?.canonicalQueries) || []
@@ -45,7 +45,7 @@ function createHeadContext(
       } catch {
         return undefined
       }
-    }
+    },
   }
 }
 
@@ -61,7 +61,7 @@ function createHeadContext(
  */
 export function localeHead(
   ctx: ComposableContext,
-  { dir = true, lang = true, seo = true }: I18nHeadOptions
+  { dir = true, lang = true, seo = true }: I18nHeadOptions,
 ): I18nHeadMetaInfo {
   return _localeHead(createHeadContext(ctx, { dir, lang, seo }))
 }
@@ -87,7 +87,7 @@ export function _useLocaleHead(ctx: ComposableContext, options: Required<I18nHea
 export function _useSetI18nParams(
   ctx: ComposableContext,
   seo?: SeoAttributesOptions,
-  router = ctx.router
+  router = ctx.router,
 ): (params: I18nRouteMeta) => void {
   const head = __I18N_STRICT_SEO__ ? ctx.head : useHead({})
   const evt = __I18N_STRICT_SEO__ && import.meta.server && useRequestEvent()
@@ -103,7 +103,7 @@ export function _useSetI18nParams(
       if (evt && evt?.context.nuxtI18n?.slp) {
         evt.context.nuxtI18n.slp = val
       }
-    }
+    },
   })
 
   const unsub = watch(
@@ -111,7 +111,7 @@ export function _useSetI18nParams(
     () => {
       router.currentRoute.value.meta[__DYNAMIC_PARAMS_KEY__] = _i18nParams.value
       __I18N_STRICT_SEO__ && updateState()
-    }
+    },
   )
 
   if (getCurrentScope()) {
@@ -126,7 +126,7 @@ export function _useSetI18nParams(
   const ctxOptions = ref({
     ...ctx.seoSettings,
     key: __I18N_STRICT_SEO__ ? 'key' : 'id',
-    seo: seo ?? ctx.seoSettings.seo
+    seo: seo ?? ctx.seoSettings.seo,
   })
 
   return function (params: I18nRouteMeta) {

@@ -1,10 +1,10 @@
 import { deepCopy, isArray, isFunction, isObject } from '@intlify/shared'
-import { vueI18nConfigs, localeLoaders, normalizedLocales } from '#internal/i18n-options.mjs'
+import { localeLoaders, normalizedLocales, vueI18nConfigs } from '#internal/i18n-options.mjs'
 import { dtsFile } from '#internal/i18n-type-generation-options'
 import { loadVueI18nOptions } from '../shared/messages'
 import { getMergedMessages } from './utils/messages'
 import { useRuntimeI18n } from '../shared/utils'
-import { writeFile } from 'fs/promises'
+import { writeFile } from 'node:fs/promises'
 
 import type { I18nOptions } from 'vue-i18n'
 
@@ -21,7 +21,7 @@ export default async () => {
   const merged = {
     messages: {},
     datetimeFormats: {},
-    numberFormats: {}
+    numberFormats: {},
   }
 
   const vueI18nConfig: I18nOptions = await loadVueI18nOptions(vueI18nConfigs)
@@ -33,7 +33,7 @@ export default async () => {
 
   const loaderPromises: Promise<unknown>[] = []
   for (const locale in localeLoaders) {
-    if (!targetLocales.includes(locale)) continue
+    if (!targetLocales.includes(locale)) { continue }
     const loader = async () => deepCopy((await getMergedMessages(locale, []))?.[locale], merged.messages)
     loaderPromises.push(loader())
   }
@@ -50,7 +50,7 @@ function generateInterface(obj: Record<string, unknown>, indentLevel = 1) {
   let str = ''
 
   for (const key in obj) {
-    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) { continue }
 
     if (isObject(obj[key]) && obj[key] !== null && !isArray(obj[key])) {
       str += `${indent}"${key}": {\n`

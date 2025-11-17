@@ -1,13 +1,14 @@
-import type { Locale, I18nOptions } from 'vue-i18n'
+import type { I18nOptions, Locale } from 'vue-i18n'
 import type { PluginOptions } from '@intlify/unplugin-vue-i18n'
 import type { RouteMapGeneric, RouteMapI18n } from 'vue-router'
-import { STRATEGIES } from './constants'
+import type { STRATEGIES } from './constants'
+
 export type {
   STRATEGY_NO_PREFIX,
   STRATEGY_PREFIX,
   STRATEGY_PREFIX_AND_DEFAULT,
   STRATEGY_PREFIX_EXCEPT_DEFAULT,
-  STRATEGIES
+  STRATEGIES,
 } from './constants'
 
 /**
@@ -192,6 +193,12 @@ export interface ExperimentalFeatures {
    * @default true
    */
   nitroContextDetection?: boolean
+  /**
+   * HTTP cache duration for the messages API endpoint in seconds.
+   * This controls how long browsers cache the translation data.
+   * @default 10
+   */
+  httpCacheDuration?: number
 }
 
 export interface BundleOptions
@@ -219,7 +226,7 @@ export interface LocaleMessageCompilationOptions {
 
 export type NuxtI18nOptions<
   Context = unknown,
-  ConfiguredLocaleType extends string[] | LocaleObject[] = string[] | LocaleObject[]
+  ConfiguredLocaleType extends string[] | LocaleObject[] = string[] | LocaleObject[],
 > = {
   /**
    * Path to a Vue I18n configuration file, the module will scan for a i18n.config{.js,.mjs,.ts} if left unset.
@@ -419,6 +426,11 @@ export type NuxtI18nOptions<
    * @default true
    */
   autoDeclare?: boolean
+  /**
+   * Prefix for the server route used for loading locale messages.
+   * @default '/_i18n'
+   */
+  serverRoutePrefix?: string
 }
 
 /**

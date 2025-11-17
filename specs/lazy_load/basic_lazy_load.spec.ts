@@ -29,6 +29,11 @@ describe('basic lazy loading', async () => {
     expect(await page.locator('#dynamic-time').innerText()).to.not.equal(dynamicTime)
   })
 
+  test('(#3773) messages are loaded once on page load', async () => {
+    const { requests } = await renderPage('/')
+    expect(requests.filter(x => x.includes('/en/messages.json'))).toHaveLength(1)
+  })
+
   test('locales are fetched on demand', async () => {
     const home = url('/')
     const { page } = await renderPage(home)
@@ -153,7 +158,7 @@ describe('basic lazy loading', async () => {
 
     // trigger server-side locale loading
     const html = await $fetch('/en-GB')
-    const runtimeText = getDom(html).querySelector('#runtime-config-key')!.textContent!
+    const runtimeText = await (await getDom(html)).locator('#runtime-config-key')!.textContent()!
     expect(runtimeText).toEqual('runtime-config-value')
   })
 })

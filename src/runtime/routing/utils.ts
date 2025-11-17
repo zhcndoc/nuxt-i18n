@@ -1,15 +1,15 @@
 import { assign } from '@intlify/shared'
-import { normalizeRouteName, getLocalizedRouteName } from '#i18n-kit/routing'
+import { getLocalizedRouteName, normalizeRouteName } from '#i18n-kit/routing'
 
 import type { Locale } from 'vue-i18n'
-import type { RouteLocationPathRaw, RouteLocationResolvedGeneric, Router, RouteRecordNameGeneric } from 'vue-router'
+import type { RouteLocationPathRaw, RouteLocationResolvedGeneric, RouteRecordNameGeneric, Router } from 'vue-router'
 
 /**
  * Returns a getter function which returns a localized route name for the given route and locale.
  * The returned function can vary based on the strategy and domain configuration.
  */
 export function createLocaleRouteNameGetter(
-  defaultLocale: string
+  defaultLocale: string,
 ): (name: RouteRecordNameGeneric | null, locale: string) => string {
   // no route localization
   if (!__I18N_ROUTING__ && !__DIFFERENT_DOMAINS__) {
@@ -29,7 +29,7 @@ export function createLocaleRouteNameGetter(
  * Factory function which returns a resolver function based on the routing strategy.
  */
 export function createLocalizedRouteByPathResolver(
-  router: Router
+  router: Router,
 ): (route: RouteLocationPathRaw, locale: Locale) => RouteLocationPathRaw | RouteLocationResolvedGeneric {
   if (!__I18N_ROUTING__) {
     return route => route

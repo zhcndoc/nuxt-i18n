@@ -10,11 +10,10 @@ import MagicString from 'magic-string'
 import { createUnplugin } from 'unplugin'
 import { parse as parseSFC } from '@vue/compiler-sfc'
 import { VIRTUAL_PREFIX_HEX, isVue } from './utils'
-import { DEFINE_I18N_ROUTE_FN } from '../constants'
 
 import type { BundlerPluginOptions } from './utils'
 
-const I18N_MACRO_FN_RE = new RegExp(`\\b${DEFINE_I18N_ROUTE_FN}\\s*\\(\\s*`)
+const I18N_MACRO_FN_RE = /\bdefineI18nRoute\s*\(\s*/
 
 /**
  * TODO:
@@ -37,7 +36,7 @@ export const TransformMacroPlugin = (options: BundlerPluginOptions) =>
 
       transform: {
         filter: {
-          code: { include: I18N_MACRO_FN_RE }
+          code: { include: I18N_MACRO_FN_RE },
         },
         handler(code) {
           const parsed = parseSFC(code, { sourceMap: false })
@@ -63,10 +62,10 @@ export const TransformMacroPlugin = (options: BundlerPluginOptions) =>
           if (s.hasChanged()) {
             return {
               code: s.toString(),
-              map: options.sourcemap ? s.generateMap({ hires: true }) : undefined
+              map: options.sourcemap ? s.generateMap({ hires: true }) : undefined,
             }
           }
-        }
-      }
+        },
+      },
     }
   })

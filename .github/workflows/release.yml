@@ -1,5 +1,9 @@
 name: Release
 
+permissions:
+  id-token: write
+  contents: write
+
 # trigger by `git tag` push only via `yarn release`
 on:
   push:
@@ -31,7 +35,7 @@ jobs:
 
       - name: Create github releases
         run: |
-          npx changelogithub
+          pnpx changelogithub
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
@@ -45,7 +49,7 @@ jobs:
 
       - name: Sync changelog from github releases
         run: |
-          pnpm changelog --tag=${{ steps.split.outputs._2 }}
+          pnpx gh-changelogen --repo=nuxt-community/i18n-module --tag=${{ steps.split.outputs._2 }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

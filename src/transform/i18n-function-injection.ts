@@ -6,7 +6,7 @@
  */
 
 import MagicString from 'magic-string'
-import { walk, ScopeTracker, parseAndWalk } from 'oxc-walker'
+import { ScopeTracker, parseAndWalk, walk } from 'oxc-walker'
 import { createUnplugin } from 'unplugin'
 import { isVue } from './utils'
 import type { BundlerPluginOptions } from './utils'
@@ -19,7 +19,7 @@ const TRANSLATION_FUNCTIONS_MAP: Record<(typeof TRANSLATION_FUNCTIONS)[number], 
   $d: 'd: $d',
   $n: 'n: $n',
   $tm: 'tm: $tm',
-  $te: 'te: $te'
+  $te: 'te: $te',
 }
 
 const QUERY_RE = /\?.*$/
@@ -40,16 +40,16 @@ export const TransformI18nFunctionPlugin = (options: BundlerPluginOptions) =>
 
       transform: {
         filter: {
-          code: { include: TRANSLATION_FUNCTIONS_RE }
+          code: { include: TRANSLATION_FUNCTIONS_RE },
         },
         handler(code, id) {
           const script = extractScriptSetupContent(code)
-          if (!script) return
+          if (!script) { return }
 
           // replace .vue extension with .ts or .tsx
           const filepath = withoutQuery(id).replace(/\.\w+$/, '.' + script.loader)
           const missing = collectMissingI18nFunctions(script.code, filepath)
-          if (!missing.size) return
+          if (!missing.size) { return }
 
           // only add variables when used without having been declared
           const assignments: string[] = []
@@ -63,10 +63,10 @@ export const TransformI18nFunctionPlugin = (options: BundlerPluginOptions) =>
 
           return {
             code: s.toString(),
-            map: options.sourcemap ? s.generateMap({ hires: true }) : undefined
+            map: options.sourcemap ? s.generateMap({ hires: true }) : undefined,
           }
-        }
-      }
+        },
+      },
     }
   })
 
@@ -79,13 +79,13 @@ export function collectMissingI18nFunctions(script: string, id: string) {
   walk(ast.program, {
     scopeTracker,
     enter(node) {
-      if (node.type !== 'CallExpression' || node.callee.type !== 'Identifier') return
+      if (node.type !== 'CallExpression' || node.callee.type !== 'Identifier') { return }
       const name = node.callee.name
       // check if function is used without having been declared
-      if (!name || !TRANSLATION_FUNCTIONS.includes(name) || scopeTracker.isDeclared(name)) return
+      if (!name || !TRANSLATION_FUNCTIONS.includes(name) || scopeTracker.isDeclared(name)) { return }
 
       missing.add(name)
-    }
+    },
   })
 
   return missing
@@ -95,11 +95,11 @@ export function collectMissingI18nFunctions(script: string, id: string) {
 const SFC_SCRIPT_COMPLEX_RE = /<script(?<attrs>[^>]*)>(?<content>[\s\S]*?)<\/script[^>]*>/i
 function extractScriptSetupContent(sfc: string) {
   const match = sfc.match(SFC_SCRIPT_COMPLEX_RE)
-  if (match?.groups?.content && match.groups.attrs && match.groups.attrs.indexOf('setup') !== -1) {
+  if (match?.groups?.content && match.groups.attrs && match.groups.attrs.includes('setup')) {
     return {
       code: match.groups.content.trim(),
       loader: match.groups.attrs && /[tj]sx/.test(match.groups.attrs) ? 'tsx' : 'ts',
-      start: sfc.indexOf(match.groups.content)
+      start: sfc.indexOf(match.groups.content),
     }
   }
 }

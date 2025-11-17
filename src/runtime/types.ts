@@ -1,11 +1,11 @@
 import type { ComputedRef } from 'vue'
 import type { Directions, LocaleObject, Strategies } from '#internal-i18n-types'
-import type { Locale, Composer, VueI18n, ExportedGlobalComposer } from 'vue-i18n'
+import type { Composer, ExportedGlobalComposer, Locale, VueI18n } from 'vue-i18n'
 import type {
   HistoryState,
   RouteLocationAsRelative,
   RouteLocationNormalizedGeneric,
-  RouteRecordNameGeneric
+  RouteRecordNameGeneric,
 } from 'vue-router'
 import type { NuxtI18nContext } from './context'
 
@@ -25,7 +25,7 @@ export type I18nRouteMeta = Partial<Record<Locale, false | Record<string, unknow
  * @template ConfiguredLocaleType - The type of the locales configuration. Can be an array of string codes or an array of {@link LocaleObject}.
  */
 export interface ComposerCustomProperties<
-  ConfiguredLocaleType extends Locale[] | LocaleObject[] = Locale[] | LocaleObject[]
+  ConfiguredLocaleType extends Locale[] | LocaleObject[] = Locale[] | LocaleObject[],
 > {
   /**
    * List of locales - can either be an array of string codes (e.g. `['en', 'fr']`) or an array of {@link LocaleObject} for more complex configurations

@@ -1,4 +1,4 @@
-import { defineConfig, configDefaults } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
@@ -9,21 +9,21 @@ export default defineConfig({
     retry: process.env.CI ? 1 : 0,
     server: {
       deps: {
-        inline: [/@nuxt\/test-utils/]
-      }
+        inline: [/@nuxt\/test-utils/],
+      },
     },
     setupFiles: ['./specs/utils/setup-env.ts'],
     exclude: [...configDefaults.exclude],
     poolOptions: {
       forks: {
         maxForks: process.env.CI ? undefined : 4,
-        minForks: process.env.CI ? undefined : 4
-      }
-    }
+        minForks: process.env.CI ? undefined : 4,
+      },
+    },
   },
   resolve: {
     alias: {
-      '#imports': 'nuxt'
-    }
-  }
+      '#imports': 'nuxt',
+    },
+  },
 })

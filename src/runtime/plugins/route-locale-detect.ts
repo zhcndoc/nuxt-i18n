@@ -14,23 +14,23 @@ export default defineNuxtPlugin({
     await nuxt.runWithContext(() =>
       loadAndSetLocale(
         nuxt,
-        (ctx.initial && resolvedLocale.value) || detectLocale(nuxt, nuxt.$router.currentRoute.value)
-      )
+        (ctx.initial && resolvedLocale.value) || detectLocale(nuxt, nuxt.$router.currentRoute.value),
+      ),
     )
 
     // no pages or no prefixes - do not register route middleware
-    if (!__I18N_ROUTING__ || (import.meta.server && __I18N_SERVER_REDIRECT__)) return
+    if (!__I18N_ROUTING__ || (import.meta.server && __I18N_SERVER_REDIRECT__)) { return }
 
     addRouteMiddleware(
       'locale-changing',
-      defineNuxtRouteMiddleware(async to => {
+      defineNuxtRouteMiddleware(async (to) => {
         const locale = await nuxt.runWithContext(() => loadAndSetLocale(nuxt, detectLocale(nuxt, to)))
 
         ctx.initial = false
 
         return nuxt.runWithContext(() => navigate(nuxt, to, locale))
       }),
-      { global: true }
+      { global: true },
     )
-  }
+  },
 })

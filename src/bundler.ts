@@ -11,13 +11,7 @@ import type { Nuxt } from '@nuxt/schema'
 import type { PluginOptions } from '@intlify/unplugin-vue-i18n'
 import type { BundlerPluginOptions } from './transform/utils'
 import type { I18nNuxtContext } from './context'
-import {
-  DEFAULT_COOKIE_KEY,
-  DYNAMIC_PARAMS_KEY,
-  NUXT_I18N_MODULE_ID,
-  FULL_STATIC_LIFETIME,
-  SWITCH_LOCALE_PATH_LINK_IDENTIFIER
-} from './constants'
+import { DEFAULT_COOKIE_KEY, DYNAMIC_PARAMS_KEY, FULL_STATIC_LIFETIME, SWITCH_LOCALE_PATH_LINK_IDENTIFIER } from './constants'
 import { version } from '../package.json'
 
 export async function extendBundler(ctx: I18nNuxtContext, nuxt: Nuxt) {
@@ -25,12 +19,12 @@ export async function extendBundler(ctx: I18nNuxtContext, nuxt: Nuxt) {
    * shared plugins (nuxt/nitro)
    */
   const pluginOptions: BundlerPluginOptions = {
-    sourcemap: !!nuxt.options.sourcemap.server || !!nuxt.options.sourcemap.client
+    sourcemap: !!nuxt.options.sourcemap.server || !!nuxt.options.sourcemap.client,
   }
   const resourcePlugin = ResourcePlugin(pluginOptions, ctx)
 
   addBuildPlugin(resourcePlugin)
-  nuxt.hook('nitro:config', async cfg => {
+  nuxt.hook('nitro:config', async (cfg) => {
     cfg.rollupConfig!.plugins = (await cfg.rollupConfig!.plugins) || []
     cfg.rollupConfig!.plugins = toArray(cfg.rollupConfig!.plugins)
     cfg.rollupConfig!.plugins.push(HeistPlugin(pluginOptions, ctx).rollup())
@@ -49,12 +43,12 @@ export async function extendBundler(ctx: I18nNuxtContext, nuxt: Nuxt) {
     ...ctx.options.customBlocks,
     allowDynamic: true,
     optimizeTranslationDirective: false,
-    include: localePaths.length ? localePaths : []
+    include: localePaths.length ? localePaths : [],
   }
   addBuildPlugin({
     vite: () => VueI18nPlugin.vite(vueI18nPluginOptions),
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    webpack: () => VueI18nPlugin.webpack(vueI18nPluginOptions)
+
+    webpack: () => VueI18nPlugin.webpack(vueI18nPluginOptions),
   })
   addBuildPlugin(TransformMacroPlugin(pluginOptions))
   if (ctx.options.autoDeclare && nuxt.options.imports.autoImport !== false) {
@@ -68,7 +62,7 @@ export async function extendBundler(ctx: I18nNuxtContext, nuxt: Nuxt) {
 export function getDefineConfig(
   { options, fullStatic, deploymentHash }: I18nNuxtContext,
   server = false,
-  nuxt = useNuxt()
+  nuxt = useNuxt(),
 ) {
   const cacheLifetime = options.experimental.cacheLifetime ?? (fullStatic ? FULL_STATIC_LIFETIME : -1)
   const isCacheEnabled = cacheLifetime >= 0 && (!nuxt.options.dev || !!options.experimental.devCache)
@@ -86,7 +80,6 @@ export function getDefineConfig(
     __DYNAMIC_PARAMS_KEY__: JSON.stringify(DYNAMIC_PARAMS_KEY),
     __DEFAULT_COOKIE_KEY__: JSON.stringify(DEFAULT_COOKIE_KEY),
     __NUXT_I18N_VERSION__: JSON.stringify(version),
-    __NUXT_I18N_MODULE_ID__: JSON.stringify(NUXT_I18N_MODULE_ID),
     __SWITCH_LOCALE_PATH_LINK_IDENTIFIER__: JSON.stringify(SWITCH_LOCALE_PATH_LINK_IDENTIFIER),
     __I18N_STRATEGY__: JSON.stringify(options.strategy),
     __DIFFERENT_DOMAINS__: String(options.differentDomains),
@@ -97,14 +90,15 @@ export function getDefineConfig(
     __DEFAULT_DIRECTION__: JSON.stringify(options.defaultDirection),
     __I18N_CACHE__: String(isCacheEnabled),
     __I18N_CACHE_LIFETIME__: JSON.stringify(cacheLifetime),
+    __I18N_HTTP_CACHE_DURATION__: JSON.stringify(options.experimental.httpCacheDuration ?? 10),
     __I18N_FULL_STATIC__: String(fullStatic),
     __I18N_STRIP_UNUSED__: JSON.stringify(stripMessagesPayload),
     __I18N_PRELOAD__: JSON.stringify(!!options.experimental.preload),
-    // eslint-disable-next-line @typescript-eslint/no-base-to-string
+
     __I18N_ROUTING__: JSON.stringify(nuxt.options.pages.toString() && options.strategy !== 'no_prefix'),
     __I18N_STRICT_SEO__: JSON.stringify(!!options.experimental.strictSeo),
+    __I18N_SERVER_ROUTE__: JSON.stringify([options.serverRoutePrefix, deploymentHash].join('/')),
     __I18N_SERVER_REDIRECT__: JSON.stringify(!!options.experimental.nitroContextDetection),
-    __I18N_HASH__: JSON.stringify(deploymentHash)
   }
 
   if (nuxt.options.ssr || !server) {
@@ -113,7 +107,7 @@ export function getDefineConfig(
       __VUE_I18N_LEGACY_API__: String(!(options.bundle?.compositionOnly ?? true)),
       __VUE_I18N_FULL_INSTALL__: String(options.bundle?.fullInstall ?? true),
       __INTLIFY_PROD_DEVTOOLS__: 'false',
-      __INTLIFY_DROP_MESSAGE_COMPILER__: String(options.bundle?.dropMessageCompiler ?? false)
+      __INTLIFY_DROP_MESSAGE_COMPILER__: String(options.bundle?.dropMessageCompiler ?? false),
     }
   }
 

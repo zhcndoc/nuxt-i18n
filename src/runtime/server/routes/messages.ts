@@ -1,7 +1,7 @@
 import { deepCopy } from '@intlify/shared'
 import { defineCachedEventHandler, defineCachedFunction } from 'nitropack/runtime'
-import { getRouterParam, createError, defineEventHandler } from 'h3'
-import { useI18nContext } from '../context'
+import { createError, defineEventHandler, getRouterParam } from 'h3'
+import { initializeI18nContext, tryUseI18nContext, useI18nContext } from '../context'
 import { getMergedMessages } from '../utils/messages'
 
 import type { H3Event } from 'h3'
@@ -31,11 +31,13 @@ const _cachedMessageLoader = defineCachedFunction(_messagesHandler, {
   name: 'i18n:messages-internal',
   maxAge: !__I18N_CACHE__ ? -1 : 60 * 60 * 24,
   getKey: event => [getRouterParam(event, 'locale') ?? 'null', getRouterParam(event, 'hash') ?? 'null'].join('-'),
-  shouldBypassCache(event) {
+  async shouldBypassCache(event) {
     const locale = getRouterParam(event, 'locale')
-    if (locale == null) return false
-    return !useI18nContext(event).localeConfigs?.[locale]?.cacheable
-  }
+    if (locale == null) { return false }
+    // prerendering may require initializing context
+    const ctx = tryUseI18nContext(event) || await initializeI18nContext(event)
+    return !ctx.localeConfigs?.[locale]?.cacheable
+  },
 })
 
 /**
@@ -43,9 +45,9 @@ const _cachedMessageLoader = defineCachedFunction(_messagesHandler, {
  */
 const _messagesHandlerCached = defineCachedEventHandler(_cachedMessageLoader, {
   name: 'i18n:messages',
-  maxAge: !__I18N_CACHE__ ? -1 : 10,
+  maxAge: !__I18N_CACHE__ ? -1 : __I18N_HTTP_CACHE_DURATION__,
   swr: false,
-  getKey: event => [getRouterParam(event, 'locale') ?? 'null', getRouterParam(event, 'hash') ?? 'null'].join('-')
+  getKey: event => [getRouterParam(event, 'locale') ?? 'null', getRouterParam(event, 'hash') ?? 'null'].join('-'),
 })
 
 /**

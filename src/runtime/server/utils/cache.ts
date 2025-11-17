@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useStorage } from 'nitropack/runtime'
 import { prefixStorage } from 'unstorage'
 
@@ -13,7 +14,7 @@ export interface CacheOptions<ArgsT extends unknown[] = any[]> {
 }
 
 const storage = prefixStorage(useStorage(), 'i18n')
-type CachedValue<T> = { ttl: number; value: T; mtime: number }
+type CachedValue<T> = { ttl: number, value: T, mtime: number }
 
 /**
  * Create a cached function
@@ -21,7 +22,7 @@ type CachedValue<T> = { ttl: number; value: T; mtime: number }
  */
 export function cachedFunctionI18n<T, ArgsT extends unknown[] = any[]>(
   fn: (...args: ArgsT) => T | Promise<T>,
-  opts: CacheOptions<ArgsT>
+  opts: CacheOptions<ArgsT>,
 ): (...args: ArgsT) => Promise<T | undefined> {
   opts = { maxAge: 1, ...opts }
   const pending: { [key: string]: Promise<T> } = {}

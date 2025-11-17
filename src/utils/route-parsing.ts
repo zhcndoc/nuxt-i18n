@@ -14,7 +14,7 @@ enum SegmentParserState {
   dynamic,
   optional,
   catchall,
-  group
+  group,
 }
 
 enum SegmentTokenType {
@@ -22,7 +22,7 @@ enum SegmentTokenType {
   dynamic,
   optional,
   catchall,
-  group
+  group,
 }
 
 interface SegmentToken {
@@ -34,8 +34,8 @@ const COLON_RE = /:/g
 export function getRoutePath(tokens: SegmentToken[]): string {
   return tokens.reduce((path, token) => {
     return (
-      path +
-      (token.type === SegmentTokenType.optional
+      path
+      + (token.type === SegmentTokenType.optional
         ? `:${token.value}?`
         : token.type === SegmentTokenType.dynamic
           ? `:${token.value}()`
@@ -76,7 +76,7 @@ export function parseSegment(segment: string) {
               : state === SegmentParserState.catchall
                 ? SegmentTokenType.catchall
                 : SegmentTokenType.group,
-      value: buffer
+      value: buffer,
     })
 
     buffer = ''

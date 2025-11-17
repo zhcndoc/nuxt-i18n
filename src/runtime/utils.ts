@@ -1,27 +1,27 @@
-import { isEqual, joinURL, withoutTrailingSlash, withTrailingSlash } from 'ufo'
+import { isEqual, joinURL, withTrailingSlash, withoutTrailingSlash } from 'ufo'
 import { isFunction, isString } from '@intlify/shared'
 import { navigateTo, useHead, useNuxtApp, useRequestEvent, useRequestURL, useRouter } from '#imports'
 import { createLocaleRouteNameGetter, createLocalizedRouteByPathResolver } from './routing/utils'
 import { getRouteBaseName } from '#i18n-kit/routing'
 import {
-  localePath,
-  switchLocalePath,
   type RouteLike,
   type RouteLikeWithName,
-  type RouteLikeWithPath
+  type RouteLikeWithPath,
+  localePath,
+  switchLocalePath,
 } from './routing/routing'
 import { useNuxtI18nContext } from './context'
 import { getDefaultLocaleForDomain, isSupportedLocale } from './shared/locales'
 
 import type { Locale } from 'vue-i18n'
 import type { NuxtApp } from '#app'
-import type { RouteLocationPathRaw, Router, RouteRecordNameGeneric } from 'vue-router'
+import type { RouteLocationPathRaw, RouteRecordNameGeneric, Router } from 'vue-router'
 import type {
   BaseUrlResolveHandler,
   DetectBrowserLanguageOptions,
   I18nHeadMetaInfo,
   I18nHeadOptions,
-  LocaleObject
+  LocaleObject,
 } from '#internal-i18n-types'
 import type { NuxtI18nContext } from './context'
 import type { CompatRoute, I18nRouteMeta, RouteLocationGenericPath } from './types'
@@ -69,7 +69,7 @@ export function useComposableContext(nuxtApp: NuxtApp): ComposableContext {
   const context = nuxtApp?._nuxtI18n?.composableCtx
   if (!context) {
     throw new Error(
-      'i18n context is not initialized. Ensure the i18n plugin is installed and the composable is used within a Vue component or setup function.'
+      'i18n context is not initialized. Ensure the i18n plugin is installed and the composable is used within a Vue component or setup function.',
     )
   }
   return context
@@ -82,7 +82,7 @@ export function createComposableContext(ctx: NuxtI18nContext, nuxtApp: NuxtApp =
   const getLocalizedRouteName = createLocaleRouteNameGetter(defaultLocale)
 
   function resolveLocalizedRouteByName(route: RouteLikeWithName, locale: string) {
-    route.name ||= getRouteBaseName(router.currentRoute.value) // fallback to current route name
+    route.name = getRouteBaseName(route.name || router.currentRoute.value) // fallback to current route name
 
     // check if localized variant exists
     const localizedName = getLocalizedRouteName(route.name, locale)
@@ -122,13 +122,13 @@ export function createComposableContext(ctx: NuxtI18nContext, nuxtApp: NuxtApp =
     seoSettings: {
       dir: __I18N_STRICT_SEO__,
       lang: __I18N_STRICT_SEO__,
-      seo: __I18N_STRICT_SEO__
+      seo: __I18N_STRICT_SEO__,
     },
     localePathPayload: getLocalePathPayload(),
     routingOptions: {
-      defaultLocale: defaultLocale,
+      defaultLocale,
       strictCanonicals: ctx.config.experimental.alternateLinkCanonicalQueries ?? true,
-      hreflangLinks: !(!__I18N_ROUTING__ && !__DIFFERENT_DOMAINS__)
+      hreflangLinks: !(!__I18N_ROUTING__ && !__DIFFERENT_DOMAINS__),
     },
     getLocale: ctx.getLocale,
     getLocales: ctx.getLocales,
@@ -136,7 +136,7 @@ export function createComposableContext(ctx: NuxtI18nContext, nuxtApp: NuxtApp =
     getRouteBaseName,
     getRouteLocalizedParams: () =>
       (router.currentRoute.value.meta[__DYNAMIC_PARAMS_KEY__] ?? {}) as Partial<I18nRouteMeta>,
-    getLocalizedDynamicParams: locale => {
+    getLocalizedDynamicParams: (locale) => {
       if (__I18N_STRICT_SEO__ && import.meta.client && nuxtApp.isHydrating && composableCtx.localePathPayload) {
         return composableCtx.localePathPayload[locale] || {}
       }
@@ -168,7 +168,7 @@ export function createComposableContext(ctx: NuxtI18nContext, nuxtApp: NuxtApp =
       return isRouteLocationPathRaw(route)
         ? resolveLocalizedRouteByPath(route, locale)
         : resolveLocalizedRouteByName(route, locale)
-    }
+    },
   }
   return composableCtx
 }
@@ -262,7 +262,7 @@ export function detectLocale(nuxtApp: NuxtApp, route: string | CompatRoute): str
 }
 
 export function navigate(nuxtApp: NuxtApp, to: CompatRoute, locale: string) {
-  if (!__I18N_ROUTING__ || __DIFFERENT_DOMAINS__) return
+  if (!__I18N_ROUTING__ || __DIFFERENT_DOMAINS__) { return }
 
   const ctx = useNuxtI18nContext(nuxtApp)
   const _ctx = useComposableContext(nuxtApp)
@@ -293,10 +293,10 @@ export function navigate(nuxtApp: NuxtApp, to: CompatRoute, locale: string) {
 
 export function prefixable(currentLocale: string, defaultLocale: string): boolean {
   return (
-    !__DIFFERENT_DOMAINS__ &&
-    __I18N_ROUTING__ &&
+    !__DIFFERENT_DOMAINS__
+    && __I18N_ROUTING__
     // only prefix default locale with strategy prefix
-    (currentLocale !== defaultLocale || __I18N_STRATEGY__ === 'prefix')
+    && (currentLocale !== defaultLocale || __I18N_STRATEGY__ === 'prefix')
   )
 }
 
@@ -307,11 +307,11 @@ export function createBaseUrlGetter(
   nuxt: NuxtApp,
   baseUrl: string | BaseUrlResolveHandler<unknown> | undefined,
   defaultLocale: string,
-  getDomainFromLocale: (locale: string) => string | undefined
+  getDomainFromLocale: (locale: string) => string | undefined,
 ): () => string {
   if (isFunction(baseUrl)) {
-    import.meta.dev &&
-      console.warn('[nuxt-i18n] Configuring baseUrl as a function is deprecated and will be removed in v11.')
+    import.meta.dev
+      && console.warn('[nuxt-i18n] Configuring baseUrl as a function is deprecated and will be removed in v11.')
     return (): string => baseUrl(nuxt)
   }
 

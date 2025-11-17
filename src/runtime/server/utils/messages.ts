@@ -21,7 +21,7 @@ const _getMessagesCached = cachedFunctionI18n(_getMessages, {
   name: 'messages',
   maxAge: !__I18N_CACHE__ ? -1 : 60 * 60 * 24,
   getKey: locale => locale,
-  shouldBypassCache: locale => !isLocaleCacheable(locale)
+  shouldBypassCache: locale => !isLocaleCacheable(locale),
 })
 
 /**
@@ -60,7 +60,7 @@ export const getMergedMessages = cachedFunctionI18n(_getMergedMessages, {
   name: 'merged-single',
   maxAge: !__I18N_CACHE__ ? -1 : 60 * 60 * 24,
   getKey: (locale, fallbackLocales) => `${locale}-[${[...new Set(fallbackLocales)].sort().join('-')}]`,
-  shouldBypassCache: (locale, fallbackLocales) => !isLocaleWithFallbacksCacheable(locale, fallbackLocales)
+  shouldBypassCache: (locale, fallbackLocales) => !isLocaleWithFallbacksCacheable(locale, fallbackLocales),
 })
 
 const _getAllMergedMessages = async (locales: string[]) => {
@@ -83,5 +83,5 @@ export const getAllMergedMessages = cachedFunctionI18n(_getAllMergedMessages, {
   name: 'merged-all',
   maxAge: !__I18N_CACHE__ ? -1 : 60 * 60 * 24,
   getKey: locales => locales.join('-'),
-  shouldBypassCache: locales => !locales.every(locale => isLocaleCacheable(locale))
+  shouldBypassCache: locales => !locales.every(locale => isLocaleCacheable(locale)),
 })
