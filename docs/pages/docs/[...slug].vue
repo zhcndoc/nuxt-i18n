@@ -93,6 +93,7 @@ const links = computed(() =>
 
     <UPageBody>
       <ContentRenderer v-if="page" :value="page" />
+      <div class="wwads-cn wwads-horizontal w-full my-4" data-id="354"></div>
 
       <USeparator v-if="surround.filter(Boolean)?.length" />
 
@@ -101,8 +102,11 @@ const links = computed(() =>
 
     <template v-if="page.body.toc.links.length" #right>
       <UContentToc :title="toc?.title" :links="page.body?.toc?.links">
+        <template #top>
+          <div class="wwads-cn wwads-vertical w-full my-4" data-id="354"></div>
+        </template>
         <template v-if="toc?.bottom" #bottom>
-          <Ads />
+          <!-- <Ads /> -->
           <USeparator v-if="page.body?.toc?.links?.length" type="dashed" />
           <UPageLinks title="社区" :links="links" />
         </template>

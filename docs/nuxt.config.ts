@@ -12,6 +12,10 @@ export default defineNuxtConfig({
   // SEO
   site: { url: 'https://nuxt-i18n.zhcndoc.com' },
 
+  ui: {
+    fonts: false
+  },
+
   nitro: {
     prerender: {
       crawlLinks: true
@@ -40,7 +44,6 @@ export default defineNuxtConfig({
       }
     }
   },
-
   llms: {
     domain: 'https://i18n.nuxtjs.org',
     title: 'Nuxt i18n Docs',
