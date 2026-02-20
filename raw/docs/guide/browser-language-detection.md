@@ -1,0 +1,86 @@
+# 浏览器语言检测
+
+> 检测用户浏览器的语言。
+
+默认情况下，Nuxt i18n 模块会通过检测用户浏览器的语言来尝试重定向用户到其偏好的语言。这由 `detectBrowserLanguage` 选项控制。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    detectBrowserLanguage: {
+      useCookie: true,
+      cookieKey: 'i18n_redirected',
+      redirectOn: 'root' // 推荐
+    }
+  }
+})
+```
+
+<callout icon="i-heroicons-light-bulb">
+
+为了更好的 SEO，推荐将 `redirectOn` 设置为 `root`（这是默认值）。设置后，只有当用户访问站点的根路径 (`'/'`) 时才会尝试语言检测。这样可以让爬虫访问请求的页面，而不会根据检测到的语言环境被重定向走。同时也允许链接到特定语言环境的页面。
+
+</callout>
+
+浏览器语言会从客户端运行时的 `navigator` 中检测，或从 HTTP 请求头的 `accept-language` 中检测。配置的 `locales`（或当 locales 以对象形式指定时的 locales `language` 和/或 `code`）将和浏览器报告的语言环境进行匹配（例如 `en-US,en;q=0.9,no;q=0.8`）。如果没有找到完整语言环境的精确匹配，则会用语言代码（`-` 前的字母）与配置的语言环境进行匹配。
+
+为了防止每次用户访问应用时都被重定向，**Nuxt i18n 模块**会使用检测到的语言环境设置一个 cookie。你可以通过设置 `detectBrowserLanguage.cookieKey` 选项来自定义 cookie 名称，默认名称是 *i18n_redirected*。
+
+```ts [nuxt.config.ts]
+i18n: {
+  detectBrowserLanguage: {
+    useCookie: true,
+    cookieKey: 'my_custom_cookie_name'
+  }
+}
+```
+
+如果你希望用户每次访问应用时都重定向到他们浏览器的语言，则可以通过将 `detectBrowserLanguage.useCookie` 设置为 `false` 来禁用 cookie。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    detectBrowserLanguage: {
+      useCookie: false
+    }
+  }
+})
+```
+
+如果要完全禁用浏览器语言检测功能，请将 `detectBrowserLanguage` 设置为 `false`。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    // ...
+    detectBrowserLanguage: false
+  }
+})
+```
+
+如果想让用户每次访问应用时都被重定向，同时保持他们的选择，请启用 `alwaysRedirect`：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    // ...
+    detectBrowserLanguage: {
+      useCookie: true,
+      alwaysRedirect: true
+    }
+  }
+})
+```
+
+如果需要在跨域环境中使用该 cookie（例如在 iFrame 中），可以设置 `cookieCrossOrigin: true`。这会将 cookie 设置从 `'SameSite=Lax'` 改为 `'SameSite=None; Secure'`。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    detectBrowserLanguage: {
+      useCookie: true,
+      cookieCrossOrigin: true
+    }
+  }
+})
+```

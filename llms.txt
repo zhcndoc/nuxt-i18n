@@ -1,0 +1,53 @@
+# Nuxt i18n Docs
+
+> Nuxt i18n is a powerful internationalization (i18n) module for Nuxt powered by Vue i18n.
+
+## Documentation Sets
+
+- [Nuxt i18n Docs](https://i18n.nuxtjs.org/llms-full.txt): The complete Nuxt i18n documentation written in Markdown (MDC syntax).
+
+## Docs
+
+- [安装](https://i18n.nuxtjs.org/raw/docs/getting-started.md): 开始使用 Nuxt i18n 模块。
+- [使用方法](https://i18n.nuxtjs.org/raw/docs/getting-started/usage.md): 使用 Nuxt i18n 模块的基础入门
+- [Vue I18n 配置](https://i18n.nuxtjs.org/raw/docs/getting-started/vue-i18n.md): 配置 Vue I18n 的运行时选项
+- [路由策略](https://i18n.nuxtjs.org/raw/docs/guide.md): Nuxt i18n 模块覆盖 Nuxt 默认路由，为每个 URL 添加语言前缀，并提供多种路由策略。
+- [运行时钩子](https://i18n.nuxtjs.org/raw/docs/guide/runtime-hooks.md): Nuxt i18n 模块提供运行时钩子，您可以使用它们根据应用的语言执行特定任务。
+- [自定义路由路径](https://i18n.nuxtjs.org/raw/docs/guide/custom-paths.md): 为特定语言环境自定义路径名称。
+- [忽略本地化路由](https://i18n.nuxtjs.org/raw/docs/guide/ignoring-localized-routes.md): 为每个页面组件自定义本地化路由排除配置。
+- [浏览器语言检测](https://i18n.nuxtjs.org/raw/docs/guide/browser-language-detection.md): 检测用户浏览器的语言。
+- [SEO](https://i18n.nuxtjs.org/raw/docs/guide/seo.md): 当调用 `useLocaleHead` 时，@nuxtjs/i18n 会尝试添加一些元数据来提升页面的 SEO 优化。以下是它所做的内容。
+- [懒加载翻译](https://i18n.nuxtjs.org/raw/docs/guide/lazy-load-translations.md): 如何懒加载翻译内容。
+- [语言切换器](https://i18n.nuxtjs.org/raw/docs/guide/lang-switcher.md): 如何更改您的网站当前语言。
+- [不同的域名](https://i18n.nuxtjs.org/raw/docs/guide/different-domains.md): 为您的应用支持的每种语言使用不同的域名。
+- [多域名多语言区域设置](https://i18n.nuxtjs.org/raw/docs/guide/multi-domain-locales.md): 为多语言区域设置配置多个域名。为应用支持的每种语言使用不同的域名。
+- [本地化回退](https://i18n.nuxtjs.org/raw/docs/guide/locale-fallback.md): 当翻译缺失时，如何选择回退语言。
+- [每组件翻译](https://i18n.nuxtjs.org/raw/docs/guide/per-component-translations.md): 在组件中内联定义翻译信息。
+- [扩展消息钩子](https://i18n.nuxtjs.org/raw/docs/guide/extend-messages.md): 在项目中使用 Nuxt 钩子来扩展 i18n 消息。
+- [扩展页面](https://i18n.nuxtjs.org/raw/docs/guide/extend-pages.md): 从模块添加本地化页面。
+- [层级](https://i18n.nuxtjs.org/raw/docs/guide/layers.md): 使用层级扩展 Nuxt i18n 项目。
+- [服务端翻译](https://i18n.nuxtjs.org/raw/docs/guide/server-side-translations.md): 在服务端进行翻译并作为响应返回。
+- [模块集成](https://i18n.nuxtjs.org/raw/docs/guide/install-module.md): 如何在模块内部集成 Nuxt i18n。
+- [迁移指南](https://i18n.nuxtjs.org/raw/docs/guide/migrating.md): 按照本指南从 v9.x 升级到 v10.x
+- [新功能](https://i18n.nuxtjs.org/raw/docs/guide/new-features.md): v10 中的新内容
+- [选项](https://i18n.nuxtjs.org/raw/docs/api/options.md): 配置 Nuxt I18n 时可用的所有选项。
+- [Vue I18n](https://i18n.nuxtjs.org/raw/docs/api/vue-i18n.md): Vue I18n 的扩展
+- [Vue](https://i18n.nuxtjs.org/raw/docs/api/vue.md): Vue 的扩展。
+- [Nuxt](https://i18n.nuxtjs.org/raw/docs/api/nuxt.md): 与 Nuxt 相关的 I18n 其他 API。
+- [运行时配置](https://i18n.nuxtjs.org/raw/docs/api/runtime-config.md): i18n 运行时配置选项。
+- [<NuxtLinkLocale>](https://i18n.nuxtjs.org/raw/docs/components/nuxt-link-locale.md): 用于结合 <NuxtLink> 使用 localePath 的简写组件
+- [<SwitchLocalePathLink>](https://i18n.nuxtjs.org/raw/docs/components/switch-locale-path-link.md): 一个增强型的受限 <NuxtLink> 组件，用于渲染由 switchLocalePath 解析的路径
+- [useLocalePath](https://i18n.nuxtjs.org/raw/docs/composables/use-locale-path.md): useLocalePath() 组合函数返回一个根据当前语言环境解析路径的函数。
+- [useLocaleRoute](https://i18n.nuxtjs.org/raw/docs/composables/use-locale-route.md): useLocaleRoute() 组合式函数返回一个根据当前语言环境解析路由的函数。
+- [useSwitchLocalePath](https://i18n.nuxtjs.org/raw/docs/composables/use-switch-locale-path.md): useSwitchLocalePath() 组合式函数返回一个允许切换语言环境的函数。
+- [useLocaleHead](https://i18n.nuxtjs.org/raw/docs/composables/use-locale-head.md): useLocaleHead() 组合式函数返回与本地化相关的头部属性。
+- [useSetI18nParams](https://i18n.nuxtjs.org/raw/docs/composables/use-set-i18n-params.md): useSetI18nParams() 返回一个用于设置当前路由翻译参数的函数。
+关于其用法的更多细节，请参阅语言切换指南。
+- [useRouteBaseName](https://i18n.nuxtjs.org/raw/docs/composables/use-route-base-name.md): useRouteBaseName() 组合式函数返回一个函数，该函数用于获取路由的基本名称。
+- [useBrowserLocale](https://i18n.nuxtjs.org/raw/docs/composables/use-browser-locale.md): useBrowserLocale() 组合式函数返回浏览器的语言环境。
+- [useCookieLocale](https://i18n.nuxtjs.org/raw/docs/composables/use-cookie-locale.md): useCookieLocale() 组合式函数返回 cookie 语言环境。
+- [useTranslation](https://i18n.nuxtjs.org/raw/docs/composables/use-translation.md): useTranslation() 组合函数返回翻译函数。
+- [defineI18nConfig](https://i18n.nuxtjs.org/raw/docs/composables/define-i18n-config.md): defineI18nConfig() 组合函数用于定义一个函数，该函数返回传递给 Nuxt I18n 模块中 createI18n() 选项的 vue-i18n 配置。
+- [defineI18nLocale](https://i18n.nuxtjs.org/raw/docs/composables/define-i18n-locale.md): defineI18nLocale() 组合式函数用于定义一个函数，以动态加载用于懒加载翻译的本地化消息。
+- [defineI18nLocaleDetector](https://i18n.nuxtjs.org/raw/docs/composables/define-i18n-locale-detector.md): defineI18nLocaleDetector() 是一个组合函数，用于定义一个在服务器端检测语言环境的函数，该函数会在服务器端对每个请求调用。
+- [defineI18nRoute](https://i18n.nuxtjs.org/raw/docs/compiler-macros/define-i18n-route.md)

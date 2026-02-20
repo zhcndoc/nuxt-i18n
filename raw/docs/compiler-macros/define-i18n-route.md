@@ -1,0 +1,57 @@
+# defineI18nRoute
+
+> 
+
+<callout color="warning" icon="i-heroicons-exclamation-triangle" title="注意">
+
+此宏已被弃用，建议使用 `definePageMeta()` 来设置本地化路径，并将在 v11 中移除。
+
+<br />
+
+更多详情请参见[自定义路径](/docs/guide/custom-paths#definepagemeta)一节。
+
+</callout>
+
+`defineI18nRoute()` 是一个编译器宏，您可以用它来为位于 `pages/` 目录中的**页面**组件设置自定义路由路径（除非[另行设置](https://nuxt.com/docs/api/configuration/nuxt-config#pages-1)）。这样，您可以为 Nuxt 应用中的每个静态或动态路由设置自定义路由路径。
+
+```vue [pages/some-page.vue]
+<script setup>
+defineI18nRoute({
+  paths: {
+    en: '/about-us',
+    fr: '/a-propos',
+    ja: '/about-ja'
+  }
+})
+</script>
+```
+
+## 类型
+
+```ts
+defineI18nRoute(route: I18nRoute | false) => void
+
+interface I18nRoute {
+  paths?: Record<Locale, `/${string}`>
+  locales?: Locale[]
+}
+```
+
+## 参数
+
+### `false`
+
+禁用目标页面组件路由的本地化。
+
+### `I18nRoute`
+
+一个接受以下国际化路由设置的对象：
+
+- **paths**
+  - **类型**: `Record<Locale, `/${string}`>`<br />
+  
+  为每个语言环境自定义页面组件路由。您可以为 vue-router 指定静态和动态路径。
+- **locales**
+  - **类型**: `Locale[]`<br />
+  
+  页面组件应本地化的某些语言环境列表。

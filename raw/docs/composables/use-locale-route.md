@@ -1,0 +1,30 @@
+# useLocaleRoute
+
+> useLocaleRoute() 组合式函数返回一个根据当前语言环境解析路由的函数。
+
+`useLocaleRoute()` 组合式函数返回一个根据当前语言环境解析路由的函数。
+
+## 类型
+
+```ts
+declare function useLocaleRoute(
+  options?: I18nCommonRoutingOptionsWithComposable
+): (route: RawLocation | RouteLocation, locale?: Locale) => Route | (RouteLocation & { href: string }) | undefined
+```
+
+## 用法
+
+```vue
+<script setup>
+const localeRoute = useLocaleRoute()
+const { locale } = useI18n()
+const linkPath = computed(() => {
+  const route = localeRoute('blog', locale.value)
+  return route != null ? route.path : '/'
+})
+</script>
+
+<template>
+  <NuxtLink :to="linkPath">{{ $t('blog') }}</NuxtLink>
+</template>
+```

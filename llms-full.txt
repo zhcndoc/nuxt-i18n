@@ -1,0 +1,3955 @@
+# 安装
+
+::callout{icon="i-heroicons-light-bulb"}
+Nuxt i18n 模块为您的项目配置 **Vue I18n v11**，有关其功能的深入指南，请参阅 [Vue i18n 文档](https://vue-i18n.intlify.dev/){rel=""nofollow""}。
+::
+
+## 快速开始
+
+1. 将 `@nuxtjs/i18n` 作为开发依赖安装到您的项目中：
+
+```bash
+npx nuxi@latest module add @nuxtjs/i18n
+```
+
+2. 在 `nuxt.config` 的 modules 中添加 `@nuxtjs/i18n`：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n']
+})
+```
+
+## 配置
+
+您可以通过在 `nuxt.config` 根目录中使用 `i18n` 属性来设置模块选项。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    // 模块选项
+  }
+})
+```
+
+## Edge 版本渠道
+
+### 选择加入
+
+您可以选择加入 `main` 分支上的最新提交，以免等待下一个版本的发布，并通过测试新变更帮助模块。
+
+更新您 `package.json` 中的 `@nuxtjs/i18n` 依赖：
+
+```diff [package.json]
+{
+  "devDependencies": {
+-   "@nuxtjs/i18n": "^9.0.0"
++   "@nuxtjs/i18n": "npm:@nuxtjs/i18n-edge"
+  }
+}
+```
+
+删除锁文件（`package-lock.json`、`yarn.lock` 或 `pnpm-lock.yaml`）并重新安装依赖。
+
+### 选择退出
+
+更新您 `package.json` 中的 `@nuxtjs/i18n` 依赖：
+
+```diff [package.json]
+{
+  "devDependencies": {
+-   "@nuxtjs/i18n": "npm:@nuxtjs/i18n-edge"
++   "@nuxtjs/i18n": "^9.0.0"
+  }
+}
+```
+
+删除锁文件（`package-lock.json`、`yarn.lock` 或 `pnpm-lock.yaml`）并重新安装依赖。
+
+
+# 使用方法
+
+## 基本设置
+
+让我们从在 nuxt 配置中设置项目的 `locales` 和 `defaultLocale` 开始。
+
+对于本项目，我们为 locales 配置以下属性：
+
+- `code`：必需属性，locale 代码在 Nuxt I18n 中通用，作为该 locale 的标识符。
+- `name`：locale 的名称，是一种用户友好的 locale 标识方式。
+- `file`：提供翻译信息的文件，内容为一个对象。
+
+`defaultLocale` 应设置为配置的某个 locales 的 `code`，设置此项为可选但推荐，因为它会在访问不存在的路由时被用作回退。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    defaultLocale: 'en',
+    locales: [
+      { code: 'en', name: 'English', file: 'en.json' },
+      { code: 'nl', name: 'Nederlands', file: 'nl.json' }
+    ]
+  }
+})
+```
+
+一个典型的项目对每个配置的 locale 至少有一个对应的 `file` 文件，该文件以对象形式提供翻译内容。
+
+Nuxt I18n 默认从一个（可配置的）目录结构中加载 locale 文件，默认应在 `<rootDir>/i18n/locales` 下创建这些 locale 文件。
+
+::code-group
+```json [i18n/locales/en.json]
+{
+  "welcome": "Welcome"
+}
+```
+
+```json [i18n/locales/nl.json]
+{
+  "welcome": "Welkom"
+}
+```
+::
+
+通过以上配置，我们可以添加一个基础语言切换器并翻译我们的第一条消息：
+
+```vue [pages/index.vue]
+<script setup>
+const { locales, setLocale } = useI18n()
+</script>
+
+<template>
+  <div>
+    <button v-for="locale in locales" @click="setLocale(locale.code)">
+      {{ locale.name }}
+    </button>
+    <h1>{{ $t('welcome') }}</h1>
+  </div>
+</template>
+```
+
+利用配置的 locales，我们创建了一个简单的语言切换器，点击 `<button>` 元素即可在英语和荷兰语之间切换，并看到“welcome”消息和页面 URL 相应变化。
+
+至此，你已经拥有了基本的设置，可以开始全面本地化你的 Nuxt 应用！
+
+## 自动导入
+
+部分组合式函数，如 `useI18n` 是由 Nuxt [自动导入](https://nuxt.com/docs/guide/concepts/auto-imports#auto-imports){rel="&#x22;nofollow&#x22;"} 的。
+如果你禁用了 `autoImports`，则需显式从 `#imports` 导入它们，如下所示：
+
+```vue
+<script setup>
+import { useI18n, useLocalePath } from '#imports'
+// ...
+</script>
+```
+
+## 路由本地化
+
+Nuxt I18n 为每个 locale 生成本地化路由，在最基础的设置下，表现为每个路由的带 locale 代码前缀的变体。
+
+在应用中链接路由时，需要获取当前 locale 对应的本地化路由。这可借助 Nuxt I18n 提供的实用函数完成。
+
+### 使用 `$localePath` 解析本地化路由
+
+`$localePath` 函数用于获取给定路由的本地化路径，该函数由 `useLocalePath` 返回，用于 `<template>` 之外的用法。
+
+该函数接受两个参数：
+
+- `route`：路由名称或带有 name 属性的路由对象
+- `locale`：希望路由本地化成的 locale 代码，默认是当前 locale
+
+::code-group
+```vue [page.vue (全局函数)]
+<template>
+  <NuxtLink :to="$localePath('index')">{{ $t('home') }}</NuxtLink>
+  <NuxtLink :to="$localePath('index', 'en')">英文主页</NuxtLink>
+  <NuxtLink :to="$localePath('user-profile')">跳转至 {{ $t('profile') }}</NuxtLink>
+  <NuxtLink :to="$localePath({ name: 'category-slug', params: { slug: category.slug } })">
+    {{ category.title }}
+  </NuxtLink>
+</template>
+```
+
+```vue [page.vue (组合式)]
+<script setup>
+const localePath = useLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="localePath('index')">{{ $t('home') }}</NuxtLink>
+  <NuxtLink :to="localePath('index', 'en')">英文主页</NuxtLink>
+  <NuxtLink :to="localePath('user-profile')">跳转至 {{ $t('profile') }}</NuxtLink>
+  <NuxtLink :to="localePath({ name: 'category-slug', params: { slug: category.slug } })">
+    {{ category.title }}
+  </NuxtLink>
+</template>
+```
+::
+
+因为本地化路由可能因配置不同而变化，使用路由名确保解析准确。Nuxt I18n 会生成类型支持，提升类型安全和开发体验。要使用此类型支持，请在 Nuxt 配置中启用 `typedPages`。
+
+路由名称对应 Nuxt 在解析 `pages` 目录时生成的名称，详情见 [Nuxt 文档](https://nuxt.com/docs/guide/directory-structure/pages){rel="&#x22;nofollow&#x22;"}。
+
+### 语言切换
+
+`$switchLocalePath` 函数返回当前页面路由的指定 locale 本地化版本，参数是目标 locale 代码。
+
+::code-group
+```vue [page.vue (全局函数)]
+<template>
+  <NuxtLink :to="$switchLocalePath('en')">English</NuxtLink>
+  <NuxtLink :to="$switchLocalePath('nl')">Nederlands</NuxtLink>
+</template>
+```
+
+```vue [page.vue (组合式)]
+<script setup>
+const switchLocalePath = useSwitchLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="switchLocalePath('en')">English</NuxtLink>
+  <NuxtLink :to="switchLocalePath('nl')">Nederlands</NuxtLink>
+</template>
+```
+::
+
+### 使用 Route 对象进行 URL 路径本地化
+
+你可以使用 `useLocaleRoute` 来本地化更复杂的 URL 路径。当你需要以编程方式控制内部链接时，这很有用。
+
+`useLocaleRoute` 是一个组合式函数，它返回指定页面的 `Route` 对象。
+
+它的用法类似 `useLocalePath`，但返回的是 Vue Router 解析后的路由对象，而非完整路由路径。这在某些情况下更有用，因为从 `useLocalePath` 获取的路径可能不包含全部输入信息（例如，页面未指定的路由参数）。
+
+```vue
+<script setup>
+const localeRoute = useLocaleRoute()
+function onClick() {
+  const route = localeRoute({ name: 'user-profile', query: { foo: '1' } })
+  if (route) {
+    return navigateTo(route.fullPath)
+  }
+}
+</script>
+
+<template>
+  <button @click="onClick">显示资料</button>
+</template>
+```
+
+
+# Vue I18n 配置
+
+## Vue I18n 配置
+
+虽然一些选项在 Nuxt I18n 和 Vue I18n 之间是共享的，但也有一系列特定于 Vue I18n 的选项，例如：
+
+- `fallbackWarn`：用于控制回退警告。
+- `missingWarn`：用于控制缺失的本地化警告。
+- `formatter`：用于提供自定义消息格式化函数。
+- `numberFormats`：配置自定义数字格式化。
+- `datetimeFormats`：配置自定义日期时间格式化。
+- ... 更多！
+
+这些只是 Vue I18n 可用运行时选项中的一小部分示例，请查看 [Vue I18n 文档](https://vue-i18n.intlify.dev/){rel="&#x22;nofollow&#x22;"} 以探索更多可用选项。
+
+Vue I18n 特有的选项无法在 `nuxt.config` 中配置，并且与 Nuxt I18n 使用或提供的功能没有重叠。
+
+## 添加 Vue I18n 配置文件
+
+要配置这些选项，可以在 `<rootDir>/i18n` 目录下创建一个 `i18n.config.ts` 文件，该文件应默认导出一个返回 Vue I18n 选项的函数。
+
+Nuxt I18n 提供了宏函数 `defineI18nConfig` 以增强类型支持，但直接使用普通函数也可以：
+
+```ts [i18n/i18n.config.ts]
+export default defineI18nConfig(() => {
+  return {
+    // vue-i18n 选项
+  }
+})
+```
+
+配置文件会从 `<rootDir>/i18n` 解析，自动查找并加载默认文件名为 `i18n.config` 的配置文件。此行为可以通过 `vueI18n` 选项进行配置。
+
+## 何时使用
+
+当你需要配置包含运行时函数或无法序列化以供构建时处理的数据的 Vue I18n 选项时，请使用 `i18n.config.ts`。这通常出现在：
+
+- 你需要基于用户输入或外部 API 动态加载或操作本地化数据。
+- 你使用自定义的格式化函数或其他不可序列化的选项。
+- 你需要使用 Nuxt I18n 构建时配置不支持的 Vue I18n 选项。
+
+## Nuxt 配置的优势
+
+虽然可以配置与 `i18n.config.ts` 中相同（或功能上相同）的选项（`messages` - 而不是 `locales`、`defaultLocale` 等），但建议尽可能将配置保留在 Nuxt I18n 在 `nuxt.config` 中的 `i18n` 键下。
+
+Nuxt I18n 会在构建阶段使用这些选项，并通过与例如 `@intlify/unplugin-vue-i18n` 等其他库集成，来配置和优化功能。
+
+Vue I18n 配置文件会在每个请求的运行时加载，这可能会增加服务器响应时间，尤其在高流量应用中更为明显。因为服务器需要为每个传入请求解析和处理配置，并将其与 Nuxt I18n 设置的配置合并，而不是在构建时只处理一次。
+
+
+# 路由策略
+
+::callout{icon="i-heroicons-light-bulb"}
+该功能基于 [Nuxt 的路由机制](https://nuxt.com/docs/getting-started/routing){rel=""nofollow""}，需要你的项目中有一个 `pages` 目录才能启用。
+::
+
+## 路由
+
+**Nuxt i18n 模块**覆盖了 Nuxt 默认的路由，为每个 URL 添加语言前缀（除了 `'no_prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 策略下）。
+
+假设你的应用支持两种语言：法语和默认语言英语，且你的项目中有以下页面：
+
+::code-group
+```bash [目录结构]
+-| pages/
+---| about.vue
+---| index.vue
+---| posts/
+-----| [id].vue
+```
+
+```js [生成的路由（简化）]
+[
+  {
+    path: "/",
+    name: "index___en",
+  },
+  {
+    path: "/fr",
+    name: "index___fr",
+  },
+  {
+    path: "/about",
+    name: "about___en",
+  },
+  {
+    path: "/fr/about",
+    name: "about___fr",
+  },
+  {
+    path: "/posts/:id",
+    name: "posts-id___en",
+  },
+  {
+    path: "/fr/posts/:id",
+    name: "posts-id___fr",
+  }
+]
+```
+::
+
+注意，英语版本的路由没有任何前缀，因为它是默认语言，详细说明请参见路由策略部分。
+
+## 策略
+
+本模块支持 4 种策略，它们决定了应用路由的生成方式：
+
+### `'no_prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+使用该策略时，路由不会添加语言前缀。语言的检测和切换是在不改变 URL 的情况下进行。这意味着你需要依赖浏览器和 Cookie 检测，并通过调用 i18n API 实现语言切换。
+
+::callout{icon="i-heroicons-light-bulb"}
+该策略不支持[自定义路径](https://i18n.nuxtjs.org/docs/guide/custom-paths)和[忽略路由](https://i18n.nuxtjs.org/docs/guide/ignoring-localized-routes)功能，除非你也使用了[`differentDomains`](https://i18n.nuxtjs.org/docs/guide/different-domains)。
+::
+
+### `'prefix_except_default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+使用此策略，除默认语言外，所有路由都会添加语言前缀。
+
+### `'prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+该策略下，所有路由都会添加语言前缀。
+
+### `'prefix_and_default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+此策略结合了前两种策略的行为，即所有语言的 URL 都带有前缀，但默认语言的 URL 同时存在无前缀版本（不过启用 `detectBrowserLanguage` 时，前缀版本优先）。
+
+## 配置
+
+通过 `strategy` 选项配置路由策略。
+确保定义了 `defaultLocale`，特别是当你使用 `prefix_except_default`、`prefix_and_default` 或 `no_prefix` 策略时。对于其他策略，建议也设置该选项，因为它会作为 404 页面重定向时的备用语言。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  // ...
+
+  i18n: {
+    strategy: 'prefix_except_default',
+    defaultLocale: 'en'
+  }
+
+  // ...
+})
+```
+
+
+# 运行时钩子
+
+**Nuxt i18n 模块** 提供运行时钩子，用于根据应用的语言执行特定任务。
+
+## 钩子
+
+### `'i18n:beforeLocaleSwitch'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+在应用语言切换之前调用，可以通过重写 `newLocale` 属性来改变要切换的语言。
+
+参数：
+
+- `oldLocale`
+  - 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 切换前的应用语言
+- `newLocale`
+  - 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 切换后的应用语言
+- `initialSetup`
+  - 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 如果是应用加载时触发的初始语言切换，则设为 `true`。这是一个特殊情况，因为技术上语言尚未设置，所以是从无语言切换到某语言。
+- `context`
+  - 类型: `NuxtApp`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - Nuxt 应用，该属性已弃用，可在钩子外部通过 `const context = useNuxtApp()` 获取相同效果。
+
+返回值：`string | null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+### `'i18n:localeSwitched'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+在应用语言切换完成后立即调用。
+
+参数：
+
+- `oldLocale`
+  - 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 切换前的应用语言
+- `newLocale`
+  - 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 切换后的应用语言
+
+## 使用方法
+
+典型用法是在插件中定义这些回调，这样可以访问应用上下文（例如当语言变更时需要更改 Axios 配置时非常有用）。
+
+```ts [/plugins/i18n.ts]
+export default defineNuxtPlugin(nuxtApp => {
+  // 在设置新语言之前调用
+  nuxtApp.hook('i18n:beforeLocaleSwitch', (options) => {
+    console.log('onBeforeLanguageSwitch', options.oldLocale, options.newLocale, options.initialSetup)
+
+    // 你可以通过赋予不同值来覆盖新语言
+    if(options.newLocale === 'fr') {
+      options.newLocale = 'en'
+    }
+  })
+
+  // 在新语言设置完成后调用
+  nuxtApp.hook('i18n:localeSwitched', (options) => {
+    console.log('onLanguageSwitched', options.oldLocale, options.newLocale)
+  })
+})
+```
+
+
+# 自定义路由路径
+
+在某些情况下，您可能希望除了添加语言代码作为前缀之外，还能翻译 URL。有两种配置自定义路径的方法，一种是通过[模块配置](https://i18n.nuxtjs.org/#module-configuration)，另一种是通过每个[页面组件](https://i18n.nuxtjs.org/#definepagemeta)中进行配置。
+
+使用哪种方法取决于 [`customRoutes` 选项](https://i18n.nuxtjs.org/docs/api/options#customroutes) 的设置，默认值为 `'page'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。无法同时使用两种方法。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+当使用 `'no_prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} [策略](https://i18n.nuxtjs.org/docs/guide) 时，除非结合使用 [`differentDomains`](https://i18n.nuxtjs.org/docs/guide/different-domains)，否则不支持自定义路径。
+::
+
+## 模块配置
+
+确保将 `customRoutes` 选项设置为 `'config'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}，并在 `pages` 选项中添加您的自定义路径：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    customRoutes: 'config', // 禁用通过页面组件自定义路由
+    pages: {
+      about: {
+        en: '/about-us', // -> 在 /about-us 可访问（默认语言无前缀）
+        fr: '/a-propos', // -> 在 /fr/a-propos 可访问
+        es: '/sobre'     // -> 在 /es/sobre 可访问
+      }
+    }
+  }
+})
+```
+
+注意，`pages` 对象中的每个键应**对应要本地化的路由名称**。
+
+自定义的路由路径**必须以 `/` 开头**，且**不能包含语言前缀**。
+
+您现在可以使用 `localePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 函数或 `<NuxtLinkLocale>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 组件，但请确保使用命名路由。例如，路由 `'/services/advanced'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 应该写为 `'services-advanced'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}：
+
+```vue
+<script setup>
+const { t } = useI18n()
+</script>
+
+<template>
+  <NuxtLinkLocale to="about"> {{ t('about') }} </NuxtLinkLocale>
+  <NuxtLinkLocale to="services-advanced"> {{ t('advanced') }} </NuxtLinkLocale>
+</template>
+```
+
+或者：
+
+```vue
+<script setup>
+const { t } = useI18n()
+const localePath = useLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="localePath('about')"> {{ t('about') }} </NuxtLink>
+  <NuxtLink :to="localePath('services-advanced')"> {{ t('advanced') }} </NuxtLink>
+</template>
+```
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+目前不支持传递路径给 `localePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+::
+
+### 示例 1：基本的 URL 本地化
+
+假设您的 `pages` 目录结构如下：
+
+```bash [Directory structure]
+-| pages/
+---| parent/
+-----| child.vue
+---| parent.vue
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+嵌套路由中的子路由依赖于存在同名文件夹的页面组件来渲染子路由。 :br
+详情请见 [嵌套路由](https://nuxt.com/docs/guide/directory-structure/pages#nested-routes){rel=""nofollow""}。
+::
+
+您需要这样设置 `pages` 属性：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    customRoutes: 'config',
+    pages: {
+      parent: {
+        en: '/parent',
+        ca: '/pare'
+      },
+      'parent-child': {
+        en: '/parent/child',
+        ca: '/pare/fill'
+      }
+    }
+  }
+})
+```
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+所有 URL 必须以 `/` 开头。
+::
+
+### 示例 2：本地化 URL 的部分路径
+
+假设您的 `pages` 目录结构如下：
+
+```bash [Directory structure]
+-| pages/
+---| about.vue
+---| services/
+-----| index.vue
+-----| coaching.vue
+-----| development/
+-------| app.vue
+-------| website.vue
+-----| development.vue
+---| services.vue
+```
+
+您需要这样设置 `pages` 属性：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    customRoutes: 'config',
+    pages: {
+      about: {
+        fr: '/a-propos'
+      },
+      services: {
+        fr: '/offres'
+      },
+      'services-development': {
+        fr: '/offres/developement'
+      },
+      'services-development-app': {
+        fr: '/offres/developement/app'
+      },
+      'services-development-website': {
+        fr: '/offres/developement/site-web'
+      },
+      'services-coaching': {
+        fr: '/offres/formation'
+      }
+    }
+  }
+})
+```
+
+如果某个语言环境缺少自定义路径，则使用设置的 `defaultLocale` 自定义路径（如果有设置）。
+
+### 示例 3：动态路由
+
+假设您有如下动态路由：
+
+```bash [Directory structure]
+-| pages/
+---| blog/
+-----| [date]/
+-------| [slug].vue
+```
+
+您应在配置中这样配置这些页面：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    customRoutes: 'config',
+    pages: {
+      'blog-date-slug': {
+        // 参数需要像 Nuxt 动态路由一样写回这里
+        // https://nuxt.com/docs/guide/directory-structure/pages#dynamic-routes
+        ja: '/blog/tech/[date]/[slug]'
+        // ...
+      }
+    }
+  }
+})
+```
+
+## `definePageMeta`
+
+您可以在 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 中使用 `i18n` 属性为每个页面组件设置自定义路径。
+
+要使用此功能，您需要在 `nuxt.config.ts` 中将 `customRoutes` 设置为 `'meta'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    customRoutes: 'meta'
+  }
+})
+```
+
+然后每个页面可以这样定义自己的本地化路径：
+
+```vue [pages/about.vue]
+<script setup>
+definePageMeta({
+  i18n: {
+    paths: {
+      en: '/about-us', // -> 在 /about-us 可访问（默认语言无前缀）
+      fr: '/a-propos', // -> 在 /fr/a-propos 可访问
+      es: '/sobre'     // -> 在 /es/sobre 可访问
+    }
+  }
+})
+</script>
+```
+
+要配置动态路由的自定义路径，您需要在路径中使用双中括号，类似于 [Nuxt 动态路由](https://nuxt.com/docs/guide/directory-structure/pages#dynamic-routes){rel="&#x22;nofollow&#x22;"} 的用法：
+
+```vue [pages/articles/[name\\].vue]
+<script setup>
+definePageMeta({
+  i18n: {
+    paths: {
+      en: '/articles/[name]',
+      es: '/artículo/[name]'
+    }
+  }
+})
+</script>
+```
+
+## `defineI18nRoute`
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle" title="注意"}
+该方法已废弃，推荐使用 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，将在 v11 版本中移除。
+::
+
+您可以使用 `defineI18nRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 编译宏为每个页面组件设置自定义路径。
+
+```vue [pages/about.vue]
+<script setup>
+defineI18nRoute({
+  paths: {
+    en: '/about-us', // -> 在 /about-us 可访问（默认语言无前缀）
+    fr: '/a-propos', // -> 在 /fr/a-propos 可访问
+    es: '/sobre'     // -> 在 /es/sobre 可访问
+  }
+})
+</script>
+```
+
+要为动态路由配置自定义路径，也需在路径中使用双中括号，类似于 [Nuxt 动态路由](https://nuxt.com/docs/guide/directory-structure/pages#dynamic-routes){rel="&#x22;nofollow&#x22;"} 的写法：
+
+```vue [pages/articles/[name\\].vue]
+<script setup>
+defineI18nRoute({
+  paths: {
+    en: '/articles/[name]',
+    es: '/artículo/[name]'
+  }
+})
+</script>
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+`defineI18nRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 编译宏会在构建时被进行 tree-shaking 优化，不会包含在分发文件中。
+::
+
+## 动态路由参数
+
+处理动态路由参数需要更多工作，因为您需要向 **Nuxt i18n 模块** 提供参数翻译。可使用组合式函数 `useSetI18nParams` 来设置路由参数的翻译，这既用于设置 SEO 标签，也用于更改 `<SwitchLocalePathLink>` 渲染的路由。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+`switchLocalePath` 会返回使用 `setI18nParams` 翻译参数的本地化路由，这可能导致之前使用 `switchLocalePath` 渲染的链接出现 hydration 问题。 :br
+请改用 `<SwitchLocalePathLink>` 组件，该组件会在发送渲染响应之前更新路由。
+::
+
+示例（将 `slug` 替换为对应路由参数）：
+
+```vue
+<script setup>
+// 从 API 拉取产品数据...（红色杯子）
+
+const setI18nParams = useSetI18nParams()
+setI18nParams({
+  en: { slug: data.slugs.en }, // slug: 'red-mug'
+  nl: { slug: data.slugs.nl }  // slug: 'rode-mok'
+})
+
+const switchLocalePath = useSwitchLocalePath()
+switchLocalePath('en') // /products/red-mug
+switchLocalePath('nl') // /nl/products/rode-mok
+</script>
+
+<template>
+  <!-- pages/products/[slug].vue -->
+</template>
+```
+
+对于名为 `[...pathMatch].vue`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="bash"} 的特殊捕获所有路由，对象的键名需使用 `pathMatch`。例如：
+
+```vue
+<script>
+const setI18nParams = useSetI18nParams()
+setI18nParams({
+  en: { pathMatch: ['not-found-my-post'] },
+  fr: { pathMatch: ['not-found-mon-article'] }
+})
+</script>
+
+<template>
+  <!-- pages/[...pathMatch].vue -->
+</template>
+```
+
+请注意，捕获所有路由定义为**数组**。此处仅包含一个元素，但如果您想使用子路径，比如 `'/not-found/post'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}，应定义多个元素，如 `['not-found', 'post']`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。
+
+::callout{icon="i-heroicons-light-bulb"}
+**Nuxt i18n 模块** 不会帮您重置参数翻译，这意味着如果不同路由使用相同参数，在路由切换时可能出现参数冲突。请确保在此类情况下始终设置参数翻译。
+::
+
+## `definePageMeta({ name: '...' })`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 注意事项
+
+默认情况下，Nuxt 会在构建时覆盖生成的路由值，这会导致自定义命名路由（通过 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 设置 `name`）在解析本地化路径时失效。
+
+Nuxt v3.10 引入了实验性功能 [`scanPageMeta`](https://nuxt.com/docs/guide/going-further/experimental-features#scanpagemeta){rel="&#x22;nofollow&#x22;"}，需要启用此功能才能使 Nuxt I18n 的自定义命名路由正常工作。
+
+您可以按如下方式启用此实验功能：
+
+```typescript [nuxt.config.ts]
+export default defineNuxtConfig({
+  experimental: {
+    scanPageMeta: true
+  }
+})
+```
+
+
+# 忽略本地化路由
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+当使用 `'no_prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} [策略](https://i18n.nuxtjs.org/docs/guide) 时不支持此功能，除非你同时使用了 [`differentDomains`](https://i18n.nuxtjs.org/docs/guide/different-domains)。
+::
+
+如果你希望某些页面只在部分语言中可用，可以配置支持语言列表来覆盖全局设置。选项可以在页面组件内或模块配置中全局指定。
+
+### 选择本地化路由
+
+::code-group
+```vue [about-meta.vue]
+// pages/about.vue
+<script setup>
+definePageMeta({
+  i18n: { locales: ['fr', 'es'] }
+})
+</script>
+```
+
+```vue [about-macro.vue]
+// pages/about.vue
+<script setup>
+defineI18nRoute({
+  locales: ['fr', 'es']
+})
+</script>
+```
+
+```ts [nuxt.config.ts]
+i18n: {
+  pages: {
+    about: {
+      en: false,
+    }
+  }
+}
+```
+::
+
+### 禁用本地化路由
+
+::code-group
+```vue [about-meta.vue]
+// pages/about.vue
+<script setup>
+definePageMeta({ i18n: false })
+</script>
+```
+
+```vue [about-macro.vue]
+// pages/about.vue
+<script setup>
+defineI18nRoute(false)
+</script>
+```
+
+```ts [nuxt.config.ts]
+i18n: {
+  customRoutes: 'config',
+  pages: {
+    about: false
+  }
+}
+```
+::
+
+
+# 浏览器语言检测
+
+默认情况下，Nuxt i18n 模块会通过检测用户浏览器的语言来尝试重定向用户到其偏好的语言。这由 `detectBrowserLanguage` 选项控制。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    detectBrowserLanguage: {
+      useCookie: true,
+      cookieKey: 'i18n_redirected',
+      redirectOn: 'root' // 推荐
+    }
+  }
+})
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+为了更好的 SEO，推荐将 `redirectOn` 设置为 `root`（这是默认值）。设置后，只有当用户访问站点的根路径 (`'/'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}) 时才会尝试语言检测。这样可以让爬虫访问请求的页面，而不会根据检测到的语言环境被重定向走。同时也允许链接到特定语言环境的页面。
+::
+
+浏览器语言会从客户端运行时的 `navigator` 中检测，或从 HTTP 请求头的 `accept-language` 中检测。配置的 `locales`（或当 locales 以对象形式指定时的 locales `language` 和/或 `code`）将和浏览器报告的语言环境进行匹配（例如 `en-US,en;q=0.9,no;q=0.8`）。如果没有找到完整语言环境的精确匹配，则会用语言代码（`-` 前的字母）与配置的语言环境进行匹配。
+
+为了防止每次用户访问应用时都被重定向，**Nuxt i18n 模块**会使用检测到的语言环境设置一个 cookie。你可以通过设置 `detectBrowserLanguage.cookieKey` 选项来自定义 cookie 名称，默认名称是 *i18n\_redirected*。
+
+```ts [nuxt.config.ts]
+i18n: {
+  detectBrowserLanguage: {
+    useCookie: true,
+    cookieKey: 'my_custom_cookie_name'
+  }
+}
+```
+
+如果你希望用户每次访问应用时都重定向到他们浏览器的语言，则可以通过将 `detectBrowserLanguage.useCookie` 设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 来禁用 cookie。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    detectBrowserLanguage: {
+      useCookie: false
+    }
+  }
+})
+```
+
+如果要完全禁用浏览器语言检测功能，请将 `detectBrowserLanguage` 设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    // ...
+    detectBrowserLanguage: false
+  }
+})
+```
+
+如果想让用户每次访问应用时都被重定向，同时保持他们的选择，请启用 `alwaysRedirect`：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    // ...
+    detectBrowserLanguage: {
+      useCookie: true,
+      alwaysRedirect: true
+    }
+  }
+})
+```
+
+如果需要在跨域环境中使用该 cookie（例如在 iFrame 中），可以设置 `cookieCrossOrigin: true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。这会将 cookie 设置从 `'SameSite=Lax'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 改为 `'SameSite=None; Secure'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    detectBrowserLanguage: {
+      useCookie: true,
+      cookieCrossOrigin: true
+    }
+  }
+})
+```
+
+
+# SEO
+
+**Nuxt i18n 模块** 提供了 `useLocaleHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数。调用此组合函数将返回一个函数，该函数可用于生成 SEO 元数据，从而优化与本地化相关的应用程序方面，以便搜索引擎更好地识别。
+
+以下是它启用的具体优化和功能：
+
+- `<html>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 标签的 `lang` 属性
+- 生成带 `hreflang` 的备用链接
+- 生成 OpenGraph 语言标签
+- 生成规范链接
+
+[请阅读下面关于这些功能的详细说明](https://i18n.nuxtjs.org/#feature-details)
+
+## 要求
+
+要利用 SEO 优势，必须将 `locales` 选项配置为对象数组，其中每个对象的 `language` 选项设置为本地语言标签：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        language: 'en-US'
+      },
+      {
+        code: 'es',
+        language: 'es-ES'
+      },
+      {
+        code: 'fr',
+        language: 'fr-FR'
+      }
+    ]
+  }
+})
+```
+
+您还必须将 `baseUrl` 选项设置为您的生产域名，以使备用 URL 成为完全限定的：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    baseUrl: 'https://my-nuxt-app.com'
+  }
+})
+```
+
+（注意 `baseUrl` 也可以设置为函数。详情请参阅 [`baseUrl` 文档](https://i18n.nuxtjs.org/docs/api/options#baseurl)）
+
+## 配置
+
+`useLocaleHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 是一个组合式函数，调用该组合函数返回一个函数，该函数返回的元数据由 Nuxt 集成的[头部管理](https://nuxt.com/docs/getting-started/seo-meta){rel="&#x22;nofollow&#x22;"}处理。此元数据可以在 Nuxt 中的多个位置 `setup` 函数中指定：
+
+- [`app.vue`](https://nuxt.com/docs/guide/directory-structure/app){rel="&#x22;nofollow&#x22;"}
+- [`pages`](https://nuxt.com/docs/guide/directory-structure/pages){rel="&#x22;nofollow&#x22;"} 目录下的 Vue 组件
+- [`layouts`](https://nuxt.com/docs/guide/directory-structure/layouts){rel="&#x22;nofollow&#x22;"} 目录下的 Vue 组件
+
+要启用 SEO 元数据，请在上面指定的某个位置声明 `setup` 函数，并使其返回 `useLocaleHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 函数调用的结果。
+
+为避免代码重复，推荐在[布局组件](https://nuxt.com/docs/guide/directory-structure/layouts){rel="&#x22;nofollow&#x22;"}中使用[元组件](https://nuxt.com/docs/getting-started/seo-meta#components){rel="&#x22;nofollow&#x22;"}全局设置，并在必要时通过每页 Vue 组件中的 [`definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}](https://nuxt.com/docs/guide/directory-structure/pages#page-metadata){rel="&#x22;nofollow&#x22;"} 来覆盖某些值。
+
+::code-group
+```vue [app.vue]
+<template>
+  <NuxtLayout>
+    <NuxtPage />
+  </NuxtLayout>
+</template>
+```
+
+```vue [layouts/default.vue]
+<script setup>
+const route = useRoute()
+const { t } = useI18n()
+const head = useLocaleHead()
+const title = computed(() => t(route.meta.title ?? 'TBD', t('layouts.title'))
+);
+</script>
+
+<template>
+  <div>
+    <Html :lang="head.htmlAttrs.lang" :dir="head.htmlAttrs.dir">
+      <Head>
+        <Title>{{ title }}</Title>
+        <template v-for="link in head.link" :key="link.key">
+          <Link :id="link.key" :rel="link.rel" :href="link.href" :hreflang="link.hreflang" />
+        </template>
+        <template v-for="meta in head.meta" :key="meta.key">
+          <Meta :id="meta.key" :property="meta.property" :content="meta.content" />
+        </template>
+      </Head>
+      <Body>
+        <slot />
+      </Body>
+    </Html>
+  </div>
+</template>
+```
+
+```vue [pages/index.vue]
+<script setup>
+definePageMeta({
+  title: 'pages.title.top' // 设置资源键
+})
+
+const { locale, locales, t } = useI18n()
+const switchLocalePath = useSwitchLocalePath()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  <div>
+    <p>{{ t('pages.top.description') }}</p>
+    <p>{{ t('pages.top.languages') }}</p>
+    <nav>
+      <template v-for="(locale, index) in availableLocales" :key="locale.code">
+        <span v-if="index"> | </span>
+        <NuxtLink :to="switchLocalePath(locale.code)">
+          {{ locale.name ?? locale.code }}
+        </NuxtLink>
+      </template>
+    </nav>
+  </div>
+</template>
+```
+::
+
+查看您可以传递给 `useLocaleHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 的选项，请参考[组合式函数文档](https://i18n.nuxtjs.org/docs/composables/use-locale-head#options)
+
+就是这样！
+
+如果您还想添加自定义元数据，则需要调用 `useHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。当您调用带有额外元数据的 `useHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 时候，它会自动与已定义的全局元数据合并。
+
+```vue [pages/about/index.vue]
+<script setup>
+// 为 layouts/default.vue 定义页面元数据
+definePageMeta({
+  title: 'pages.title.about'
+})
+
+useHead({
+  meta: [{ property: 'og:title', content: '这是关于页面的 og 标题' }]
+})
+</script>
+
+<template>
+  <h2>{{ $t('pages.about.description') }}</h2>
+</template>
+```
+
+## 功能详情
+
+- `<html>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 标签的 `lang` 属性 :br 设置正确的 `lang` 属性，其值等同于当前语言环境的 `language` 字段，在 `<html>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 标签中体现。
+- `hreflang` 备用链接 :br 为每个配置的语言环境生成 `<link rel="alternate" hreflang="x">`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 标签。语言环境中的 `language` 值用作 `hreflang` 的值。 :br 为每个语言组（例如 `en-*`）提供一个“通配”语言 hreflang 链接。默认情况下，通配语言为第一个配置的语言环境，但可通过在特定语言环境对象中设置 `isCatchallLocale` 为 `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 来选择其他语言环境。详情见 [hreflang 说明](https://support.google.com/webmasters/answer/189077){rel="&#x22;nofollow&#x22;"}:br 以下是未选择“通配”语言的示例：
+  ```ts \[nuxt.config.ts]
+  export default defineNuxtConfig({
+    i18n: {
+      locales: [
+        {
+          code: 'en',
+          language: 'en-US' // 默认被用作“通配”语言
+        },
+        {
+          code: 'gb',
+          language: 'en-GB'
+        }
+      ]
+    }
+  })
+  ```
+  :br下面展示如何使用 `isCatchallLocale` 来指定其他语言环境：
+  ```ts \[nuxt.config.ts]
+  export default defineNuxtConfig({
+    i18n: {
+      locales: [
+        {
+          code: 'en',
+          language: 'en-US'
+        },
+        {
+          code: 'gb',
+          language: 'en-GB',
+          isCatchallLocale: true // 该语言环境将作为通配语言
+        }
+      ]
+    }
+  })
+  ```
+  :br如果您已经设置了 `en` 语言环境，默认会用作通配语言，无需其他操作：
+  ```ts \[nuxt.config.ts]
+  export default defineNuxtConfig({
+    i18n: {
+      locales: [
+        {
+          code: 'gb',
+          language: 'en-GB'
+        },
+        {
+          code: 'en',
+          language: 'en' // 将用作“通配”语言
+        }
+      ]
+    }
+  })
+  ```
+- OpenGraph 语言标签生成 :br 生成符合 [Open Graph 协议](http://ogp.me/#optional){rel="&#x22;nofollow&#x22;"} 的 `og:locale` 和 `og:locale:alternate` 元标签。
+- 规范链接 :br 在所有页面生成带有 `rel="canonical"` 的链接，用来指定搜索引擎应索引的标签页“主版本”。该功能在以下几种情况下特别有用：
+  - 使用 `prefix_and_default` 策略时，默认语言实际上会生成两组页面——一组带前缀，一组无前缀。规范链接将指向无前缀的页面，从而避免重复索引。
+  - 当页面带有查询参数时，默认情况下规范链接**不包含**查询参数。这是合理的，因为各种追踪参数不应成为规范链接的一部分。您可以通过 `canonicalQueries` 选项来覆盖该行为。例如：
+    ```vue
+    <script setup>
+    const i18nHead = useLocaleHead({ seo: { canonicalQueries: ['foo'] } })
+    useHead(() => ({
+      htmlAttrs: {
+        lang: i18nHead.value.htmlAttrs.lang
+      },
+      link: [...(i18nHead.value.link || [])],
+      meta: [...(i18nHead.value.meta || [])]
+    }))
+    </script>
+    ```
+  :br[更多关于规范链接的信息](https://support.google.com/webmasters/answer/182192#dup-content){rel="&#x22;nofollow&#x22;"}
+
+
+# 懒加载翻译
+
+对于包含大量翻译内容的应用，最好不要将所有消息都打包进主包，而是只懒加载用户选择的语言。
+这可以通过 **Nuxt i18n 模块** 实现，让模块知道你的翻译文件位置，从而在应用加载或用户切换语言时动态导入它们。
+要启用翻译的懒加载，请在配置 **Nuxt i18n 模块** 时按以下步骤操作：
+
+- 将 `locales` 选项配置为对象数组，每个对象包含 `file` 或 `files` 键，其值为对应语言的翻译文件。
+- 可选地，移除你可能通过 `vueI18n` 选项传递给 Vue I18n 的所有消息。
+- 每个 `file` 或 `files` 可以返回一个 `Object`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}，或返回一个 `Promise`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 的函数，该 `Promise` 必须返回一个 `Object`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。
+
+## 基本用法
+
+示例文件结构：
+
+```bash
+-| nuxt-project/
+---| i18n/
+-----| locales/
+-------| en-US.json
+-------| es-ES.js
+-------| fr-FR.ts
+---| nuxt.config.ts
+```
+
+配置示例：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        file: 'en-US.json'
+      },
+      {
+        code: 'es',
+        file: 'es-ES.js'
+      },
+      {
+        code: 'fr',
+        file: 'fr-FR.ts'
+      }
+    ],
+    defaultLocale: 'en'
+  }
+})
+```
+
+```ts [i18n/locales/fr-FR.ts]
+export default defineI18nLocale(async locale => {
+  return {
+    welcome: 'Bienvenue'
+  }
+})
+
+// 或者
+
+export default {
+  welcome: 'Bienvenue'
+}
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+如果你的函数返回的是一个 locale 消息对象，**必须在 `defineI18nLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合函数中定义它**。
+
+关于 `defineI18nLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 的详细信息，请参阅 [这里](https://i18n.nuxtjs.org/docs/composables/define-i18n-locale)。
+::
+
+如果函数返回的是 Nuxt i18n 模块可识别的对象，你可以通过 fetch 配置动态的语言环境消息，比如调用 API（包括外部 API）或后端：
+
+```ts
+export default defineI18nLocale(locale => {
+  // 例如，从 nuxt 服务器获取语言环境消息
+  return $fetch(`/api/${locale}`)
+})
+```
+
+## 多文件懒加载
+
+`files` 属性可以用来懒加载多个文件。
+
+这非常有用，因为管理多个仅定义差异的文件，而不重复语言环境消息，是非常高效的。
+
+例如，支持西班牙语的情况。根据 [维基百科](https://en.wikipedia.org/wiki/Spanish_language#Geographical_distribution){rel="&#x22;nofollow&#x22;"}，西班牙语是 **20 个国家** 的官方语言！
+
+如果这些国家都用 `file` 单独配置，则由于各国语言消息重复，会难以维护。
+
+在这种情况下，把目标语言所有共享（通用）的语言环境消息放在一个单独的文件中，分别为每个国家定义方言变体以防止重复，更易于维护。
+
+下面是一个包含西班牙语语言环境文件的 lang 目录示例：
+
+```bash
+-| nuxt-project/
+---| i18n/
+-----| locales/
+-------| es.json    # 西班牙语通用语言环境消息
+-------| es-AR.json # 阿根廷语言环境消息
+-------| es-UY.json # 乌拉圭语言环境消息
+-------| es-US.json # 美国语言环境消息
+-------| ...        # 其他国家
+---| nuxt.config.ts
+```
+
+下面是 `nuxt.config.ts` 中的示例配置：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      /**
+       * 西班牙语国家的 `files` 示例定义
+       */
+      {
+        code: 'es-AR',
+        name: 'Español (Argentina)',
+        // 懒加载顺序: `es.json` -> `es-AR.json`，然后 'es-AR.json' 会覆盖 'es.json'
+        files: ['es.json', 'es-AR.json']
+      },
+      {
+        code: 'es-UY',
+        name: 'Español (Uruguay)',
+        // 懒加载顺序: `es.json` -> `es-UY.json`，然后 'es-UY.json' 会覆盖 'es.json'
+        files: ['es.json', 'es-UY.json']
+      },
+      {
+        code: 'es-US',
+        name: 'Español (Estados Unidos)',
+        // 懒加载顺序: `es.json` -> `es-US.json`，然后 'es-US.json' 会覆盖 'es.json'
+        files: ['es.json', 'es-US.json']
+      }
+    ],
+    defaultLocale: 'en'
+  }
+})
+```
+
+请注意 `files` 属性的用法，上述配置中指定了一个包含多个文件名的数组。
+
+@nuxtjs/i18n 会按照 `files` 中数组指定的顺序懒加载语言消息，再按加载顺序覆盖语言消息。
+
+以上 `es-AR` 示例中，`files` 定义了 `es.json` 和 `es-AR.json`，@nuxtjs/i18n 会先懒加载 `es.json`，再懒加载 `es-AR.json` 并覆盖掉 `es.json` 的对应消息。
+
+示例中只定义了两个文件，但你完全可以指定超过 2 个文件，它们也会按数组顺序加载并覆盖。
+
+利用这种依次覆盖语言消息的特性，可以基于差异化定义管理语言环境消息。通过将共享（通用）语言消息作为 `files` 的第一个条目，再跟上区域/方言语言消息文件条目，即可避免语言环境消息的重复并高效管理资源。
+
+## 缓存
+
+懒加载的语言环境消息会基于文件名缓存，在多个语言间共享的 `file` 和 `files` 一旦加载过就会从缓存中读取。默认情况下，静态文件启用缓存，而由函数返回消息的文件禁用缓存。
+
+缓存可以通过将 `file` 或 `files` 中的条目设置为 `{ path: string, cache?: boolean}` 类型的对象逐个配置。下面示例展示了几种有效的文件配置方式。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      /**
+       * 西班牙语国家的 `files` 示例定义
+       */
+      {
+        code: 'es-ES',
+        name: 'Español (Spain)',
+        // 禁用缓存的文件
+        file: { path: 'es.js', cache: false }
+      },
+      {
+        code: 'es-AR',
+        name: 'Español (Argentina)',
+        // 禁用缓存的多个文件
+        files: [
+          { path: 'es.js', cache: false },
+          { path: 'es-AR.js', cache: false }
+        ]
+      },
+      {
+        code: 'es-UY',
+        name: 'Español (Uruguay)',
+        // 字符串和对象配置的混合使用
+        files: [{ path: 'es.js', cache: false }, 'es-UY.json']
+      }
+    ],
+    defaultLocale: 'en'
+  }
+})
+```
+
+## 使用未加载语言环境的翻译
+
+由于只加载当前语言环境的翻译，若要使用其他语言的翻译，必须手动加载对应的语言环境。
+
+Nuxt i18n 扩展了 Vue i18n，提供了 `loadLocaleMessages` 函数来手动加载语言环境消息，以下示例演示了用法。
+
+```ts
+const { loadLocaleMessages, t } = useI18n()
+
+await loadLocaleMessages('nl')
+
+const welcome = computed(() => t('welcome')) // Welcome!
+const welcomeDutch = computed(() => t('welcome', 1, { locale: 'nl' })) // Welkom!
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+由于消息可能从远程 API 加载，调用 `loadLocaleMessages` 函数会始终加载消息，不必要的加载会影响性能。
+::
+
+
+# 语言切换器
+
+当在应用中加载 **Nuxt i18n 模块** 时，它会将您的 `locales` 配置添加到 `nuxtApp.$i18n`（或 `this.$i18n`），这使得在应用中的任何地方显示语言切换器变得非常简单。
+
+下面是一个语言切换器的示例，在每个 locale 对象中添加了一个 `name` 键，以便为每个链接显示更友好的标题：
+
+```vue
+<script setup>
+const { locale, locales } = useI18n()
+const switchLocalePath = useSwitchLocalePath()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  <NuxtLink v-for="locale in availableLocales" :key="locale.code" :to="switchLocalePath(locale.code)">
+    {{ locale.name }}
+  </NuxtLink>
+</template>
+```
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        name: 'English'
+      },
+      {
+        code: 'es',
+        name: 'Español'
+      },
+      {
+        code: 'fr',
+        name: 'Français'
+      }
+    ]
+  }
+})
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+当使用 `detectBrowserLanguage` 并想在路由切换时保持语言状态时，必须显式更新存储的语言 cookie。可以通过 [`setLocaleCookie(locale)`](https://i18n.nuxtjs.org/docs/api/vue-i18n#setlocalecookie) 或 [`setLocale(locale)`](https://i18n.nuxtjs.org/docs/api/vue-i18n#setlocale) 来完成，此操作会设置 cookie 并切换到指定语言的路由。不这样做可能导致在导航过程中，根据语言 cookie 中设置的语言产生重定向。
+::
+
+例如，模板代码可能如下所示：
+
+```vue
+<script setup>
+const { locale, locales, setLocale } = useI18n()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  ...
+  <a href="#" v-for="locale in availableLocales" :key="locale.code" @click.prevent.stop="setLocale(locale.code)">
+    {{ locale.name }}
+  </a>
+  ...
+</template>
+```
+
+## 等待页面过渡
+
+默认情况下，当导航到具有不同语言的路由时，语言会立即切换，这意味着如果您有页面过渡效果，页面会先淡出，此时文本已切换为新语言，然后再淡入展示相同内容。
+
+为了解决此问题，可以将选项 [`skipSettingLocaleOnNavigate`](https://i18n.nuxtjs.org/docs/api/options#skipsettinglocaleonnavigate) 设置为 `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，并在插件中通过 `onBeforeEnter` 过渡钩子来手动处理语言设置。
+
+### 全局过渡
+
+如果您想为整个 Nuxt 应用设置过渡，可以使用 [`NuxtPage` 的 `transition`](https://nuxt.com/docs/getting-started/transitions#transition-with-nuxtpage){rel="&#x22;nofollow&#x22;"} 来进行如下控制：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    // ... 您的其他配置
+    skipSettingLocaleOnNavigate: true
+  }
+}
+```
+
+```vue [pages/app.vue]
+<script setup lang="ts">
+const { finalizePendingLocaleChange } = useI18n()
+
+const onBeforeEnter = async () => {
+  await finalizePendingLocaleChange()
+}
+</script>
+
+<template>
+  <NuxtLayout>
+    <NuxtPage
+      :transition="{
+        name: 'my',
+        mode: 'out-in',
+        onBeforeEnter
+      }"
+    />
+  </NuxtLayout>
+</template>
+
+<style>
+.my-enter-active,
+.my-leave-active {
+  transition: opacity 0.3s;
+}
+.my-enter,
+.my-leave-active {
+  opacity: 0;
+}
+</style>
+```
+
+可选地，使用 [路由器选项](https://nuxt.com/docs/guide/directory-structure/pages#router-options){rel="&#x22;nofollow&#x22;"} 在滚动之前等待语言切换，以实现更平滑的过渡：
+
+```ts [app/router.options.ts]
+import type { RouterConfig } from '@nuxt/schema'
+
+export default <RouterConfig>{
+  async scrollBehavior(to, from, savedPosition) {
+    const nuxtApp = useNuxtApp()
+
+    // 确保路由已更改。
+    if (nuxtApp.$i18n && to.name !== from.name) {
+      // `$i18n` 在 nuxtjs/i18n 模块的 `setup` 中注入。
+      // `scrollBehavior` 会等待 i18n 语言切换完成后再执行
+      await nuxtApp.$i18n.waitForPendingLocaleChange()
+    }
+
+    return savedPosition || { top: 0 }
+  }
+}
+```
+
+### 每个页面组件的过渡
+
+如果在页面组件中使用 [`definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}](https://nuxt.com/docs/guide/directory-structure/pages#page-metadata){rel="&#x22;nofollow&#x22;"} 定义了特定的过渡，需要在 `pageTransition` 的 `onBeforeEnter` 钩子中添加 `finalizePendingLocaleChange`。
+
+示例：
+
+```vue [pages/about.vue]
+<script setup lang="ts">
+const route = useRoute()
+const { finalizePendingLocaleChange } = useI18n()
+
+definePageMeta({
+  pageTransition: {
+    name: 'page',
+    mode: 'out-in'
+  }
+})
+
+route.meta.pageTransition.onBeforeEnter = async () => {
+  await finalizePendingLocaleChange()
+}
+</script>
+
+<style scoped>
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 1s;
+}
+.page-enter,
+.page-leave-active {
+  opacity: 0;
+}
+</style>
+```
+
+## Vue i18n 注意事项
+
+与 Vue i18n 不同，您不应该直接设置 `locale`，而应通过使用 [`setLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/vue-i18n#setlocale) 或导航到 [`switchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/composables/use-switch-locale-path) 返回的路由来切换语言。这样会加载翻译、触发钩子并在使用时更新语言 cookie。
+
+
+# 不同的域名
+
+您可能希望为您的应用支持的每种语言使用不同的域名。
+
+实现方法如下：
+
+- 将 `differentDomains` 选项设置为 `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 将 `locales` 选项配置为对象数组，每个对象包含一个 `domain` 键，其值为您希望为该语言使用的域名。可选地包含端口（如果是非标准端口）和/或协议。如果未提供协议，则会尝试自动检测，但在某些情况下（例如页面是静态生成时）可能无法正确工作。
+- 可选地将 `detectBrowserLanguage` 设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。启用时（默认启用），用户首次访问时可能会被重定向到不同的域。若希望确保访问特定域始终显示对应语言的页面，请设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        domain: 'mydomain.com'
+      },
+      {
+        code: 'es',
+        domain: 'es.mydomain.com'
+      },
+      {
+        code: 'fr',
+        domain: 'fr.mydomain.com'
+      },
+      {
+        code: 'pl',
+        domain: 'http://pl.mydomain.com'
+      },
+      {
+        code: 'ua',
+        domain: 'https://ua.mydomain.com'
+      }
+    ],
+    differentDomains: true
+    // 或仅在生产环境启用该选项
+    // differentDomains: (process.env.NODE_ENV === 'production')
+  }
+})
+```
+
+使用不同的域名时，您的语言切换器应使用普通的 `<a>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 标签：
+
+```vue
+<script setup>
+const { locale, locales } = useI18n()
+const switchLocalePath = useSwitchLocalePath()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  ...
+  <a v-for="locale in availableLocales" :href="switchLocalePath(locale.code)" :key="locale.code">
+    {{ locale.code }}
+  </a>
+  ...
+</template>
+```
+
+## 运行时环境变量
+
+有时需要在不同环境中更改域名，例如预生产和生产环境。
+由于 `nuxt.config.ts` 在构建时使用，因此需要为不同环境创建不同的构建版本。
+
+```ts [locale-domains.config.ts]
+export const localeDomains = {
+  uk: process.env.DOMAIN_UK,
+  fr: process.env.DOMAIN_FR
+}
+```
+
+```ts [nuxt.config.ts]
+import { localeDomains } from './locale-domains.config'
+
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+
+  i18n: {
+    differentDomains: process.env.NODE_ENV === 'production',
+    locales: [
+      {
+        code: 'uk',
+        domain: localeDomains.uk
+      },
+      {
+        code: 'fr',
+        domain: localeDomains.fr
+      }
+    ]
+  }
+})
+```
+
+根据以上配置，分别为预生产和生产环境运行构建时，需要使用不同的 `.env` 文件来指定 `DOMAIN_UK` 和 `DOMAIN_FR`。
+
+或者，为了避免多次构建的需求，可以通过运行时环境变量来覆盖区域设置域。变量名称应遵循格式 `NUXT_PUBLIC_I18N_DOMAIN_LOCALES_{code}_DOMAIN`。
+
+例如：
+
+```shell [production.env]
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_UK_DOMAIN=uk.example.test
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_FR_DOMAIN=fr.example.test
+```
+
+```shell [staging.env]
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_UK_DOMAIN=uk.staging.example.test
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_FR_DOMAIN=fr.staging.example.test
+```
+
+## 仅部分语言使用不同域名
+
+如果一个或多个域名需要托管多种语言，则每个域的默认语言需要设置 `domainDefault: true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，以便针对该域有一个默认语言备用。
+不过，`differentDomains` 选项仍需设置为 `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+
+```js [nuxt.config.js]
+export default defineNuxtConfig({
+  // ...
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        domain: 'mydomain.com',
+        domainDefault: true
+      },
+      {
+        code: 'pl',
+        domain: 'mydomain.com'
+      },
+      {
+        code: 'ua',
+        domain: 'mydomain.com'
+      },
+      {
+        code: 'es',
+        domain: 'es.mydomain.com',
+        domainDefault: true
+      },
+      {
+        code: 'fr',
+        domain: 'fr.mydomain.com',
+        domainDefault: true
+      }
+    ],
+    strategy: 'prefix',
+    differentDomains: true
+    // 或仅在生产环境启用该选项
+    // differentDomains: (process.env.NODE_ENV === 'production')
+  },
+  // ...
+})
+```
+
+基于上述配置和 `'prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 策略，以下请求将被重定向为：
+
+- <https://mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/en>{rel="&#x22;nofollow&#x22;"} （英语）
+- <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} （波兰语）
+- <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} （乌克兰语）
+- <https://es.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://es.mydomain.com/es>{rel="&#x22;nofollow&#x22;"} （西班牙语）
+- <https://fr.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://fr.mydomain.com/fr>{rel="&#x22;nofollow&#x22;"} （法语）
+
+使用 `'prefix_except_default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 策略时，相同请求为：
+
+- <https://mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com>{rel="&#x22;nofollow&#x22;"} （英语）
+- <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} （波兰语）
+- <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} （乌克兰语）
+- <https://es.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://es.mydomain.com>{rel="&#x22;nofollow&#x22;"} （西班牙语）
+- <https://fr.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://fr.mydomain.com>{rel="&#x22;nofollow&#x22;"} （法语）
+
+## 不同域的缓存考虑事项
+
+在使用不同域时，请确保正确配置缓存，以便每个域的响应能够正确分离。
+
+因为同一路由可能在多个域名下提供服务（例如 `en.mydomain.com` 和 `fr.mydomain.com`），缓存需要根据请求主机进行变化。否则，为一个域生成的响应可能会在另一个域上被重用，导致错误的语言渲染，从而导致水合不匹配和客户端的可见闪烁。
+
+推荐的设置是在您的路由规则中使用 `cache.varies: ['host']`，以便将 `host` 头包含在缓存键中：
+
+```diff [nuxt.config.ts]
+export default defineNuxtConfig({
+  routeRules: {
+-    '/': { swr: 60 },
++    '/': { swr: 60, cache: { varies: ['host'] } },
+  },
+  // ...
+})
+```
+
+
+# 多域名多语言区域设置
+
+如何设置多域名多语言区域：
+
+- 将 `multiDomainLocales` 选项设置为 `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 将 `locales`选项配置为对象数组：
+  - 每个对象具有一个 `domains` 键，其值是该语言区域想要使用的域名数组。可选包含端口号（如果非标准端口）和/或协议。如果未提供协议，则会尝试自动检测，但在页面静态生成等某些情况下可能无法正确工作。
+  - 可选地为每个对象设置 `defaultForDomains` 键，其值是希望作为该语言区域默认域名的数组。可选包含端口号（如果非标准端口）和/或协议。如果未提供协议，则会尝试自动检测，但在页面静态生成等某些情况下可能无法正确工作。
+- 可选将 `detectBrowserLanguage` 设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。默认启用时，用户首次访问时可能会被重定向到不同的域。设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 可确保访问给定域时始终显示对应语言区域的页面。
+
+```ts [nuxt.config.ts]
+const i18nDomains = ['mydomain.com', 'es.mydomain.com', 'fr.mydomain.com', 'http://pl.mydomain.com', 'https://ua.mydomain.com']
+
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        domains: i18nDomains,
+        defaultForDomains: ['mydomain.com']
+      },
+      {
+        code: 'es',
+        domains: i18nDomains,
+        defaultForDomains: ['es.mydomain.com']
+      },
+      {
+        code: 'fr',
+        domains: i18nDomains,
+        defaultForDomains: ['fr.mydomain.com']
+      },
+      {
+        code: 'pl',
+        domains: i18nDomains,
+        defaultForDomains: ['http://pl.mydomain.com']
+      },
+      {
+        code: 'ua',
+        domains: i18nDomains,
+        defaultForDomains: ['https://ua.mydomain.com']
+      },
+      {
+        code: 'nl',
+        domains: i18nDomains
+      },
+      {
+        code: 'de',
+        domains: i18nDomains
+      },
+    ],
+    multiDomainLocales: true
+  }
+})
+```
+
+## 运行时环境变量
+
+有时需要在不同环境中更改域名，例如预发布和生产环境。
+由于 `nuxt.config.ts` 在构建时使用，因此需要为不同环境创建不同的构建。
+
+```ts [locale-domains.config.ts]
+export const localeDomains = {
+  uk: process.env.DOMAIN_UK,
+  fr: process.env.DOMAIN_FR
+}
+```
+
+```ts [nuxt.config.ts]
+import { localeDomains } from './locale-domains.config'
+
+const i18nDomains = [localeDomains.uk, localeDomains.fr]
+
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+
+  i18n: {
+    multiDomainLocales: true,
+    locales: [
+      {
+        code: 'uk',
+        domains: i18nDomains,
+        defaultForDomains: [localeDomains.uk]
+      },
+      {
+        code: 'fr',
+        domains: i18nDomains,
+        defaultForDomains: [localeDomains.fr]
+      }
+    ]
+  }
+})
+```
+
+借助上述配置，预发布和生产环境需要分别用不同的 `.env` 文件运行构建，这些文件指定了 `DOMAIN_UK` 和 `DOMAIN_FR`。
+
+## 仅为部分语言使用不同域名
+
+如果多个域共享相同的默认语言，可以使用支持多个域名的 `defaultForDomains` 来全部指定它们。
+
+```js [nuxt.config.js]
+const i18nDomains = ['mydomain.com', 'en.mydomain.com', 'es.mydomain.com', 'fr.mydomain.com', 'http://pl.mydomain.com', 'https://ua.mydomain.com']
+
+export default defineNuxtConfig({
+  // ...
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        domains: i18nDomains,
+        defaultForDomains: ['mydomain.com', 'en.mydomain.com']
+      },
+      {
+        code: 'es',
+        domains: i18nDomains,
+        defaultForDomains: ['es.mydomain.com']
+      },
+      {
+        code: 'fr',
+        domains: i18nDomains,
+        defaultForDomains: ['fr.mydomain.com']
+      },
+      {
+        code: 'pl',
+        domains: i18nDomains,
+        defaultForDomains: ['http://pl.mydomain.com']
+      },
+      {
+        code: 'ua',
+        domains: i18nDomains,
+        defaultForDomains: ['https://ua.mydomain.com']
+      },
+      {
+        code: 'nl',
+        domains: i18nDomains
+      },
+      {
+        code: 'de',
+        domains: i18nDomains
+      },
+    ],
+    strategy: 'prefix',
+    multiDomainLocales: true
+  },
+  // ...
+})
+```
+
+上述配置配合 `'prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 策略，请求如下：
+
+- <https://mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/en>{rel="&#x22;nofollow&#x22;"} （英文）
+- <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} （波兰语）
+- <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} （乌克兰语）
+- <https://mydomain.com/nl>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/nl>{rel="&#x22;nofollow&#x22;"} （荷兰语）
+- <https://en.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://en.mydomain.com/en>{rel="&#x22;nofollow&#x22;"} （英文）
+- <https://es.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://es.mydomain.com/es>{rel="&#x22;nofollow&#x22;"} （西班牙语）
+- <https://fr.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://fr.mydomain.com/fr>{rel="&#x22;nofollow&#x22;"} （法语）
+- <https://fr.mydomain.com/de>{rel="&#x22;nofollow&#x22;"} -> <https://fr.mydomain.com/de>{rel="&#x22;nofollow&#x22;"} （德语）
+
+使用 `'prefix_except_default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 策略时，相同请求为：
+
+- <https://mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com>{rel="&#x22;nofollow&#x22;"} （英文）
+- <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/pl>{rel="&#x22;nofollow&#x22;"} （波兰语）
+- <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/ua>{rel="&#x22;nofollow&#x22;"} （乌克兰语）
+- <https://mydomain.com/nl>{rel="&#x22;nofollow&#x22;"} -> <https://mydomain.com/nl>{rel="&#x22;nofollow&#x22;"} （荷兰语）
+- <https://en.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://en.mydomain.com>{rel="&#x22;nofollow&#x22;"} （英文）
+- <https://es.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://es.mydomain.com>{rel="&#x22;nofollow&#x22;"} （西班牙语）
+- <https://fr.mydomain.com>{rel="&#x22;nofollow&#x22;"} -> <https://fr.mydomain.com>{rel="&#x22;nofollow&#x22;"} （法语）
+- <https://fr.mydomain.com/de>{rel="&#x22;nofollow&#x22;"} -> <https://fr.mydomain.com/de>{rel="&#x22;nofollow&#x22;"} （德语）
+
+
+# 本地化回退
+
+**Nuxt i18n 模块** 利用 **Vue I18n** 处理本地化回退的能力。可以定义单一的回退语言，一个语言数组，或者更具体需求的决策映射。
+
+```js [i18n/i18n.config.ts]
+export default {
+  fallbackLocale: 'en',
+  // 或者
+  fallbackLocale: ['en', 'fr'],
+  // 或者
+  fallbackLocale: {
+    'de-CH': ['fr', 'it'],
+    'zh-Hant': ['zh-Hans'],
+    'es-CL': ['es-AR'],
+    es: ['en-GB'],
+    pt: ['es-AR'],
+    default: ['en', 'da']
+  }
+  // ...
+}
+```
+
+更多信息请参阅 [Vue I18n 文档](https://vue-i18n.intlify.dev/guide/essentials/fallback.html){rel="&#x22;nofollow&#x22;"}
+
+
+# 每组件翻译
+
+如果你想为每个页面或每个组件定义翻译，可以利用 i18n 自定义块。
+
+现在你可以在 Vue 文件中使用 i18n 自定义块定义翻译：
+
+```vue [page.vue]
+<script setup lang="ts">
+const { t } = useI18n({
+  useScope: 'local'
+})
+</script>
+
+<template>
+  <p>{{ t('hello') }}</p>
+</template>
+
+<i18n lang="json">
+{
+  "en": {
+    "hello": "hello world!"
+  },
+  "ja": {
+    "hello": "こんにちは、世界!"
+  }
+}
+</i18n>
+```
+
+或者使用 Yaml 语法：
+
+```vue [page.vue]
+<!-- 与上面相同的 script 和 template -->
+<i18n lang="yaml">
+en:
+  hello: 'hello world!'
+ja:
+  hello: 'こんにちは、世界!'
+</i18n>
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+阅读更多关于 [i18n 自定义块](https://vue-i18n.intlify.dev/guide/advanced/sfc.html){rel=""nofollow""}
+::
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+当你使用每组件翻译时，需要使用由 `useI18n()` 导出的 `t()` 方法，**而不是使用 `$t()`**。 :br
+关于不用于每组件翻译的 `$t()`，请参阅 Vue I18n 文档中["隐式注入属性和函数"部分](https://vue-i18n.intlify.dev/guide/advanced/composition.html#implicit-with-injected-properties-and-functions){rel=""nofollow""}。
+::
+
+
+# 扩展消息钩子
+
+如果你是一个**模块作者**，希望该模块为你的项目提供额外的消息内容，可以通过使用 `'i18n:registerModule'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 钩子将其合并到正常加载的消息中。
+
+这在你的模块使用了翻译内容并且想要提供良好的默认翻译时尤其有用。
+
+在你的模块设置文件中监听 Nuxt 的 `'i18n:registerModule'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 钩子并注册你的 i18n 配置，这类似于[懒加载翻译](https://i18n.nuxtjs.org/docs/guide/lazy-load-translations)的配置方式。
+
+通过这种方式添加的翻译将会在项目中添加的翻译之后加载，并且在扩展层之前加载。
+
+示例：
+
+::code-group
+```ts [my-module-example/module.ts]
+import { createResolver, defineNuxtModule } from '@nuxt/kit'
+
+export default defineNuxtModule({
+  async setup(options, nuxt) {
+    const { resolve } = createResolver(import.meta.url)
+
+    nuxt.hook('i18n:registerModule', register => {
+      register({
+        // 需要解析 langDir 路径
+        langDir: resolve('./lang'),
+        locales: [
+          {
+            code: 'en',
+            file: 'en.json',
+          },
+          {
+            code: 'fr',
+            file: 'fr.json',
+          },
+        ]
+      })
+    })
+  }
+})
+```
+
+```json [en.json]
+{
+  "my-module-example": {
+    "hello": "来自外部模块的问候"
+  }
+}
+```
+
+```json [fr.json]
+{
+  "my-module-example": {
+    "hello": "来自外部模块的问候"
+  }
+}
+```
+::
+
+现在，项目可以访问新的消息，并通过 `$t('my-module-example.hello')`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 使用它们。
+
+::callout{icon="i-heroicons-light-bulb"}
+由于模块的消息会与项目的消息合并，最好为其添加前缀。主项目的消息**始终会覆盖**模块提供的消息。
+::
+
+
+# 扩展页面
+
+如果你是**模块作者**，并希望你的模块向项目中添加额外的页面，可以使用 `'pages:extend'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} Nuxt 钩子来实现。
+
+```ts [modules/example-module/index.ts]
+import { defineNuxtModule, createResolver } from '@nuxt/kit'
+
+export default defineNuxtModule({
+  setup(options, nuxt) {
+    const { resolve } = createResolver(import.meta.url)
+
+    nuxt.hook('pages:extend', pages => {
+      pages.push({
+        name: 'example-page',
+        path: '/example-page',
+        file: resolve(__dirname, './pages/example-page.vue')
+      })
+    })
+  }
+})
+```
+
+
+# 层级
+
+Nuxt i18n 模块支持层级，并会自动合并所有扩展层的 i18n 配置。[在此处了解更多关于层级的信息](https://nuxt.com/docs/getting-started/layers){rel="&#x22;nofollow&#x22;"}
+
+## 合并策略
+
+如 [Nuxt 层编写指南](https://nuxt.com/docs/guide/going-further/layers#multi-layer-support-for-nuxt-modules){rel="&#x22;nofollow&#x22;"} 所述：
+
+> - `_layers` 数组中较早的项具有更高优先级，会覆盖后面的项
+> - 用户的项目是 `_layers` 数组中的第一项
+
+混合本地化配置（如延迟加载对象和字符串）可能不会如预期工作，Nuxt i18n 会尽力合并层级。确保各层间 i18n 配置的一致性将更为有效。
+
+## 页面 & 路由
+
+来自扩展层的 `pages` 目录中的页面会自动合并，并具备 i18n 支持，就如同它们是你项目的一部分。
+
+在每个层的配置中 `i18n.pages` 定义的页面路由也会被合并。
+
+## 本地化语言
+
+扩展了已设置 Nuxt i18n 模块层的项目无需额外配置，如下示例所示：
+
+::code-group
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  extends: ['my-layer']
+})
+```
+
+```ts [my-layer/nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    locales: [
+      { code: 'en', file: 'en.json' },
+      { code: 'nl', file: 'nl.json' }
+    ]
+  }
+})
+```
+::
+
+项目能够使用 i18n 功能，所配置的本地化语言文件由扩展的层提供并加载。
+
+### 合并本地化语言
+
+项目中提供的本地化语言会与扩展层提供的合并，做法如下：
+
+::code-group
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  extends: ['my-layer'],
+  i18n: {
+    locales: [{ code: 'en', file: 'en.json' }]
+  }
+})
+```
+
+```ts [my-layer/nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    locales: [
+      { code: 'en', file: 'en.json' },
+      { code: 'nl', file: 'nl.json' }
+    ]
+  }
+})
+```
+::
+
+此示例将使项目支持两个语言（`'en'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}, `'nl'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}），并且会添加为 `'en'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 语言额外添加的消息。
+
+::code-group
+```ts [project/i18n/locales/en.json]
+{
+  "title": "foo"
+}
+```
+
+```ts [project/my-layer/i18n/locales/en.json]
+{
+  "title": "layer title",
+  "description": "bar"
+}
+```
+::
+
+以上结果为：
+
+```jsonc
+{
+  // 较早的层拥有优先权
+  "title": "foo",
+  "description": "bar"
+}
+```
+
+## VueI18n 选项
+
+层内的 VueI18n 配置文件中定义的选项会合并，并根据其层级优先权相互覆盖。
+
+
+# 服务端翻译
+
+你可以在服务端进行翻译并作为响应返回。在 nuxt i18n 模块选项中定义的本地化消息被集成，因此你只需配置本地语言检测器。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+**此功能是实验性质，** 自 v8 RC8 起支持。
+::
+
+## 定义语言检测器
+
+要进行服务端翻译，你需要定义一个语言检测器。
+
+Nuxt i18n 导出了 `defineI18nLocaleDetector()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合函数用来定义语言检测器。
+
+以下是一个通过查询参数、Cookie 和请求头检测语言的示例：
+
+```ts [i18n/localeDetector.ts]
+// 基于查询参数、Cookie、请求头检测
+export default defineI18nLocaleDetector((event, config) => {
+  // 尝试从查询参数获取语言
+  const query = tryQueryLocale(event, { lang: '' }) // 通过 `lang` 选项禁用默认语言值
+  if (query) {
+    return query.toString()
+  }
+
+  // 尝试从 Cookie 获取语言
+  const cookie = tryCookieLocale(event, { lang: '', name: 'i18n_locale' }) // 通过 `lang` 选项禁用默认语言值
+  if (cookie) {
+    return cookie.toString()
+  }
+
+  // 尝试从请求头（accept-header）获取语言
+  const header = tryHeaderLocale(event, { lang: '' }) // 通过 `lang` 选项禁用默认语言值
+  if (header) {
+    return header.toString()
+  }
+
+  // 如果到此为止仍无法确定语言，则用传递给函数的语言配置的 `defaultLocale` 值作为语言
+  return config.defaultLocale
+})
+```
+
+语言检测器函数用于在服务端检测语言。它会在服务器上针对每个请求调用。
+
+定义语言检测器后，你需要将语言检测器的路径传递到 `experimental.localeDetector` 选项中。
+
+以下是一个直接在 Nuxt 应用中定义语言检测器配置的示例：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    experimental: {
+      localeDetector: 'localeDetector.ts'
+    }
+  }
+})
+```
+
+有关由 `defineI18nLocaleDetector()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 定义的语言检测器函数的详细信息，请参见[这里](https://i18n.nuxtjs.org/docs/composables/define-i18n-locale-detector)。
+
+## 在 eventHandler 中使用 `useTranslation()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+要在服务端进行翻译，你需要调用 `useTranslation()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+
+示例：
+
+```ts
+// 你需要定义一个 `async` 的事件处理程序
+export default defineEventHandler(async event => {
+  // 调用 `useTranslation`，它将返回翻译函数
+  const t = await useTranslation(event)
+  return {
+    // 调用翻译函数，传入本地化消息的键，
+    // 翻译函数支持多种重载形式
+    hello: t('hello')
+  }
+})
+```
+
+::callout{icon="i-heroicons-light-bulb"}
+对于翻译函数的键值，你可以指定在 nuxt.config 中 nuxt-i18n 选项里设置的本地化消息，或者定义在 i18n.config 消息中的语言文本。
+::
+
+
+# 模块集成
+
+如果你的模块依赖于 Nuxt i18n，可以使用 `moduleDependencies`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 来声明依赖关系，并定义默认或覆盖选项。更多信息请参见 Nuxt 的[模块作者指南](https://nuxt.com/docs/4.x/guide/modules/recipes-basics#use-other-modules){rel="&#x22;nofollow&#x22;"}。
+
+你需要将 `vueI18n`、`langDir` 以及 `locales` 中配置的路径解析为绝对路径：
+
+```ts
+import { createResolver, defineNuxtModule } from '@nuxt/kit'
+
+const resolver = createResolver(import.meta.url)
+
+export default defineNuxtModule({
+  moduleDependencies: {
+    '@nuxtjs/i18n': {
+      defaults: {
+        vueI18n: resolver.resolve('./i18n.config.ts'),
+        langDir: resolver.resolve('./lang'),
+        locales: [
+          { code: 'en', file: resolver.resolve('./lang/en.json') },
+          { code: 'fr', file: resolver.resolve('./lang/fr.json') },
+        ]
+      }
+    }
+  },
+  // ...
+})
+```
+
+
+# 迁移指南
+
+## 升级到 Vue I18n v11
+
+我们已将 Vue I18n 从 v10 升级到 v11，此主要版本更新已弃用 Legacy API 模式和自定义的 `v-t` 指令，并且从 Legacy API 模式中移除了 `tc()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 和 `$tc()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+
+请查看关于破坏性变更的详细文档 [这里](https://vue-i18n.intlify.dev/guide/migration/breaking11.html){rel="&#x22;nofollow&#x22;"}。
+
+## 配置选项
+
+以下 [配置选项](https://i18n.nuxtjs.org/docs/api/options) 已被更改、弃用或移除。
+
+| 状态 | 选项                                                                                                                                                                                                                  | 说明                                                                                                                                                                                          |
+| -- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|    | `experimental.hmr`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                                                                                      | 默认启用，并更名为 [`hmr`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#hmr)                 |
+|    | `experimental.switchLocalePathLinkSSR`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                                                                  | 默认启用，且不再提供禁用此功能的选项。                                                                                                                                                                         |
+|    | `experimental.autoImportTranslationFunctions`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                                                           | 默认启用，并更名为 [`autoDeclare`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#autodeclare) |
+|    | [`restructureDir`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#restructuredir)                             | 该选项不能再被禁用。 :br:br 建议保持未设置状态以使用默认值 `'i18n'`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}。                                       |
+|    | [`types`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#types)                                               | v11 只支持 `'composition'`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} 类型，与 Vue I18n v12 保持一致。                                 |
+|    | [`baseUrl`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#baseurl)                                           | v11 仅允许字符串值，不再支持函数配置。 :br:br 复杂场景请使用运行时配置或依赖多域名本地化设置基地址。                                                                                                                                    |
+|    | [`routesNameSeparator`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#routesnameseparator)                   | 文档中标记为内部使用，终端用户的使用场景不明确。                                                                                                                                                                    |
+|    | [`defaultLocaleRouteNameSuffix`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}](https://i18n.nuxtjs.org/docs/api/options#defaultlocaleroutenamesuffix) | 文档中标记为内部使用，终端用户的使用场景不明确。                                                                                                                                                                    |
+|    | `lazy`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                                                                                                  | 现在所有的语言包文件均启用懒加载。                                                                                                                                                                           |
+|    | `bundle.optimizeTranslationDirective`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                                                                   | 该功能已被禁用并彻底移除，详细上下文见 [此议题讨论](https://github.com/nuxt-modules/i18n/issues/3238#issuecomment-2672492536){rel="&#x22;nofollow&#x22;"}。                                                          |
+|    | `experimental.generatedLocaleFilePathFormat`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                                                            | 本模块对文件路径（例如语言包文件、vue-i18n 配置）相关配置已完全移除，使此选项过时。                                                                                                                                              |
+
+## 行为变化
+
+### 浏览器语言检测
+
+语言检测和重定向的改进遵循了文档中严格的行为。在 v9 中，某些 `strategy`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="yml"} 和 `redirectOn`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="yml"} 选项的组合表现出意外的行为，这在 v10 中已得到修正。
+
+**关键变化**：当使用 `strategy: 'prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 和 `redirectOn: 'root'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 时，非根路径（例如 `'/search'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}）将不再自动重定向到其本地化版本（例如 `'/zh/search'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}）。
+
+**迁移**：如果您需要对所有路径使用前缀策略进行重定向，请更新您的配置：
+
+```diff
+export default defineNuxtConfig({
+  i18n: {
+    strategy: 'prefix',
+    detectBrowserLanguage: {
+-      // redirectOn: 'root', // ⚠️ In v10 this will only redirect the root path
++      redirectOn: 'all',  // Redirects all paths as documented
+    }
+  }
+})
+```
+
+**影响**：这影响了使用 `strategy: 'prefix'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 的项目，这些项目依赖于之前意外的行为，即 `redirectOn: 'root'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 也处理非根路径。
+
+有关可用选项的更多详细信息，请参见 [`redirectOn`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="yml"} 文档](https://i18n.nuxtjs.org/docs/api/options#redirecton)。
+
+## I18n 函数
+
+以下组合式函数和 [I18n 函数](https://i18n.nuxtjs.org/docs/api/vue-i18n) 已被更改、弃用或移除。
+
+| 状态 | 函数                                                                                                                                                                                      | 说明                                                                                                                                                                                                                                   |
+| -- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+|    | [`useLocaleHead()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/composables/use-locale-head) | options 参数中的 `key`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} 属性已被移除，无法再配置，这是为了实现可预测且一致的本地化头部标签管理。                                                                  |
+|    | `onLanguageSwitched()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}                                                        | 请使用 [`'i18n:localeSwitched'`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/guide/runtime-hooks) 钩子替代。 :br:br 该函数实际上是触发钩子而非订阅，导致行为不可预测。     |
+|    | `onBeforeLanguageSwitch()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}                                                    | 请使用 [`'i18n:beforeLocaleSwitch'`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/guide/runtime-hooks) 钩子替代。 :br:br 该函数实际上是触发钩子而非订阅，导致行为不可预测。 |
+
+## 上下文函数
+
+以下 [上下文函数](https://i18n.nuxtjs.org/docs/api/nuxt) 已被更改、弃用或移除。
+
+| 状态 | 函数                                                                                                                                                                            | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|    | [`$localeHead()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/nuxt#localehead) | options 参数中的 `key`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} 属性已被移除，无法再配置，这是为了实现可预测且一致的本地化头部标签管理。                                                                                                                                                                                                                                                                                                                         |
+|    | [`$localeHead()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/nuxt#localehead) | 请改用 `useLocaleHead()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"} 组合式函数。 :br:br 因使用场景有限已被弃用，且 [`useLocaleHead()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/composables/use-locale-head) 提供相同功能，且与 `useHead()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"} 配合更易使用。 |
+|    | `$getRouteBaseName()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}                                               | 请使用 [`$routeBaseName()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/nuxt#routebasename) 替代。 :br:br 这是为了与其他上下文函数及其组合式函数名保持一致。                                                                                                                                                                                                                                                                |
+|    | `$resolveRoute()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}                                                   | 请使用 [`$localeRoute()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/nuxt#localeroute) 替代。                                                                                                                                                                                                                                                                                                     |
+|    | `$localeLocation()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}                                                 | 请使用 [`$localeRoute()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/nuxt#localeroute) 替代。                                                                                                                                                                                                                                                                                                     |
+
+## 运行时配置
+
+部分设置在运行时配置中的选项仅用于将构建时配置传递到运行时，且运行时更改这些选项可能导致问题。
+
+我们现将其视为编译器常量，而非运行时配置，这样可以对未使用的逻辑进行树摇，减少项目体积。
+
+以下选项已从运行时配置中移除：
+
+| 已移除的运行时配置选项                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lazy`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                         |
+| `strategy`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                     |
+| `trailingSlash`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                |
+| `differentDomains`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}             |
+| `defaultDirection`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}             |
+| `multiDomainLocales`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}           |
+| `routeNameSeparator`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}           |
+| `defaultLocaleRouteNameSuffix`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} |
+
+## 生成的选项
+
+项目中生成的选项文件是本模块在运行时内部使用的，不应被使用，未来可能会移除更多属性。
+
+未来对这些内部选项的更改将不会在迁移指南中记录。如果您有这些选项的使用案例，请提交一个问题，描述您的使用案例，以便我们评估是否可以以不同的方式支持它。
+
+生成的选项文件已重命名：
+
+| 旧名称                                                                                                                                      | 新名称                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `#build/i18n-options.mjs`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}    | `#build/i18n-options.mjs`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}    |
+| `#internal/i18n/options.mjs`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} | `#internal/i18n-options.mjs`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} |
+
+以下导出已从生成的选项中移除：
+
+| 已移除的导出                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `isSSG`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                              |
+| `hasPages`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                           |
+| `parallelPlugin`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                     |
+| `nuxtI18nOptions`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                    |
+| `DEFAULT_COOKIE_KEY`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                 |
+| `DYNAMIC_PARAMS_KEY`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                 |
+| `NUXT_I18N_MODULE_ID`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"}                |
+| `SWITCH_LOCALE_PATH_LINK_IDENTIFIER`{.language-yml.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="yml"} |
+
+移除理由：
+
+- 这些导出不再被模块使用，且可能在最终构建中暴露敏感信息
+- 部分选项现作为静态值使用，以实现更好的树摇效果，减小项目体积。
+
+## 传统迁移
+
+v7 和 v8 的迁移指南可在[旧版文档](https://v9.i18n.nuxtjs.org/docs/guide/migrating){rel="&#x22;nofollow&#x22;"}中找到。
+
+
+# 新功能
+
+### 通过 `definePageMeta()` 自定义路由{lang="ts"}
+
+我们新增了通过 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} API 为页面设置自定义路由的支持，这已经成为为页面设置自定义路由的推荐方式。
+该方法通过在模块选项中设置 `customRoutes: 'meta'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 来启用。
+
+要从 `defineI18nRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 宏迁移，只需将其替换为 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，并使用相同的选项设置 `i18n` 属性：
+
+```vue [pages/about.vue]
+<script setup>
+definePageMeta({
+  i18n: {
+    paths: {
+      en: '/about-us',
+      fr: '/a-propos',
+    }
+  }
+})
+</script>
+```
+
+### Nitro 端语言检测与重定向
+
+语言检测和重定向已重新实现为由 Nitro 服务器处理，这使我们能够在请求生命周期的更早阶段进行重定向，从而提升性能。
+
+之前的实现与预渲染结合使用时效果不佳，而新的实现解决了这个问题。
+
+此更改使检测和重定向更加准确，更符合文档中描述的行为，但如果这在您的项目中引发问题，可以通过在模块选项中设置 `experimental.nitroContextDetection: false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="yml"} 来禁用此功能。禁用该功能的选项为临时措施，未来版本将移除。
+
+### 实验性严格 SEO 模式
+
+我们新增了实验性选项 `strictSeo`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="yml"}，启用严格 SEO 模式，它改变了 i18n 头标签的处理方式。
+
+启用严格 SEO 模式后，i18n 头标签将由模块内部管理，这带来了多个备受期待的改进：
+
+- 设置本地化动态路由参数时，模块将不再为不支持的语言添加 alternate 标签。
+- 使用 `<SwitchLocalePathLink>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="vue"} 的不支持语言链接将被禁用，其链接会被设置为 `'#'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，并带有用于样式的 `data-i18n-disabled`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="vue"} 属性。
+- 在严格 SEO 模式下不再需要 `useLocaleHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，i18n 标签由模块自动设置，使用该函数将抛出错误。
+- 规范化查询参数通过全局配置 `experimental.strictSeo.canonicalQueryParams`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="yml"} 进行设置。
+- `useSetI18nParams()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 会继承全局规范化查询参数配置，并可通过其选项参数覆盖。
+
+如果该模式稳定，将在 v11 中成为默认选项，请尝试并反馈您遇到的任何问题。
+
+
+# 选项
+
+## vueI18n
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `''`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+用于构建时配置 Vue I18n 的选项，该选项在本模块内部使用。完整文档见 [这里](https://vue-i18n.intlify.dev/api/general.html#createi18n){rel="&#x22;nofollow&#x22;"}
+
+可通过配置文件传递 `createI18n()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 的配置。默认情况下，如果未指定任何内容，模块会扫描 `i18n.config{.js,.mjs,.ts}` 文件。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    vueI18n: './nuxt-i18n.js' // 自定义路径示例
+  }
+})
+```
+
+需要使用 **普通对象** 或 **函数** 使用 `export default` 导出。
+
+导出普通对象示例：
+
+```ts
+export default {
+  legacy: false,
+  locale: 'en',
+  messages: {
+    en: {
+      welcome: 'Welcome'
+    },
+    fr: {
+      welcome: 'Bienvenue'
+    }
+  }
+}
+```
+
+导出函数示例：
+
+```ts
+import en from '../locales/en.json'
+import fr from '../locales/fr.yaml'
+
+// 你可以使用 `defineI18nConfig` 来获取传递给 vue-i18n 的选项的类型推断。
+export default defineI18nConfig(() => {
+  return {
+    legacy: false,
+    locale: 'en',
+    messages: {
+      en,
+      fr
+    }
+  }
+})
+```
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+Vue I18n 的 `messages` 选项应由 **普通对象** 返回。
+
+这将在 nuxt i18n 模块中通过 vue-i18n 的消息编译器预编译为可在 vue-i18n 运行时执行的消息。
+::
+
+## baseUrl
+
+- 类型: `string | Function`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `''`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+用于 `hreflang` 标签中备用 URL 的基础 URL 前缀。默认使用 VueRouter 的基础 URL，仅当其不可用时才使用备用 URL。
+
+也可以是一个函数（会传入 Nuxt 上下文作为参数），返回字符串。适用于基于请求头动态生成基础 URL。
+
+该属性也可通过 [`runtimeConfig`](https://i18n.nuxtjs.org/docs/api/runtime-config) 设置。
+
+::callout{icon="i-heroicons-light-bulb"}
+使用 SEO 特性时设置此选项尤为重要，因为生成的 SEO 标签需要使用完全限定的 URL。
+::
+
+## locales
+
+- 类型: `string[] | LocaleObject[]`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `[]`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+应用支持的语言列表。可以是语言代码数组（如 `['en', 'fr', 'es']`），也可以是更复杂的本地化对象数组：
+
+```json
+[
+  { "code": "en", "language": "en-US", "file": "en.js", "dir": "ltr" },
+  { "code": "ar", "language": "ar-EG", "file": "ar.js", "dir": "rtl" },
+  { "code": "fr", "language": "fr-FR", "file": "fr.js" }
+]
+```
+
+对象形式的属性说明如下：
+
+### `code`
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 本地化唯一标识符
+
+### `language`
+
+- 类型: `undefined | string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- **使用 SEO 功能时必填**
+- 用于 SEO 和[`detectBrowserLanguage`](https://i18n.nuxtjs.org/docs/api/options#detectbrowserlanguage) 匹配浏览器语言的语言范围。应使用 IETF 的 [BCP47](https://www.rfc-editor.org/info/bcp47){rel="&#x22;nofollow&#x22;"}定义的[语言标签语法](https://www.w3.org/International/articles/language-tags/){rel="&#x22;nofollow&#x22;"}，例如：
+  - `'en'`（仅语言子标签，英语）
+  - `'fr-CA'`（语言+地区，法语加拿大用法）
+  - `'zh-Hans'`（语言+书写脚本，简体中文）
+
+### `file`
+
+- 类型: `null | string | { path: string; cache: string; }`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 文件名。相对于 `langDir` 路径解析，用于加载本地化消息。
+
+### `files`
+
+- 类型: `null | string[] | { path: string; cache: string; }[]`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 定义多个本地化消息的文件名数组。相对于 `langDir` 路径解析。
+
+See also [Multiple files lazy loading](https://i18n.nuxtjs.org/docs/guide/lazy-load-translations#multiple-files-lazy-loading) to learn more.
+
+### `dir`
+
+- 类型: `null | 'rtl' | 'ltr' | 'auto'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 指定元素及内容的方向，可为 `'rtl'`（右到左），`'ltr'`（左到右），或 `'auto'`。
+
+### `domain`
+
+- 类型: `null | string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 该本地化使用的域名（包括端口号）。该属性也可通过 [`runtimeConfig`](https://i18n.nuxtjs.org/docs/api/runtime-config) 设置。使用 [`differentDomains`](https://i18n.nuxtjs.org/docs/api/options#differentdomains) 时必填。
+
+### `domains`
+
+- 类型: `null | string[]`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- `domain`的数组。使用 [`multiDomainLocales`](https://i18n.nuxtjs.org/docs/api/options#multiDomainLocales) 并且多个域名包含同一语言时必填。
+
+### `defaultForDomains`
+
+- 类型: `null | string[]`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- （使用 [`multiDomainLocales`](https://i18n.nuxtjs.org/docs/api/options#multiDomainLocales) 时可选）
+- 指定当使用多个 `domains` 时哪个域名数组对应的语言应为默认语言。
+
+### `domainDefault`
+
+- 类型: `null | boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 设置为 `true` 表示该语言为特定域的默认语言。使用 [`differentDomains`](https://i18n.nuxtjs.org/docs/api/options#differentdomains) 并且一个或多个域名有多个语言时必填。
+
+### `...`
+
+- 自定义的任意属性会在运行时暴露。可用于例如定义语言名称供页面上的语言选择器使用。
+
+可通过 `localeProperties` 属性访问当前语言的所有属性。若为语言代码数组，仅包含 `code` 属性。
+
+## defaultDirection
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `ltr`
+
+应用默认文本方向，仅在 `dir` 未指定时生效。
+
+## defaultLocale
+
+- 类型: `string | null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `null`
+
+应用默认语言，应匹配定义的 `locales` 中的语言代码。
+
+使用 `prefix_except_default` 策略时，此处指定的语言的 URL 不带前缀。**建议无论使用何种策略都设置此项**，它作为访问不存在路由时的回退语言。
+
+## strategy
+
+- 类型: `'no_prefix' | 'prefix_except_default' | 'prefix' | 'prefix_and_default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'prefix_except_default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+路由生成策略，可选：
+
+- `'no_prefix'`：路由不带语言前缀
+- `'prefix_except_default'`：除默认语言外均添加语言前缀
+- `'prefix'`：所有语言都添加语言前缀
+- `'prefix_and_default'`：所有语言包括默认语言均添加前缀
+
+## customRoutes
+
+- 类型: `'meta' | 'page' | 'config'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'page'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+自定义路径的来源：
+
+- `'meta'`：从页面组件中 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 函数提取
+- `'page'`：从页面组件中 `defineI18nRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 宏提取
+- `'config'`：在模块配置的 `pages` 选项中配置
+
+## pages
+
+- 类型: `object`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `{}`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+当 `customRoutes` 设置为 `config` 时，模块将在此查找自定义路由。使用方式见[路由](https://i18n.nuxtjs.org/docs/guide)。
+
+## skipSettingLocaleOnNavigate
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+若为 `true`，切换语言时不自动设置本地化。适合在页面切换结束后自行调用 [`finalizePendingLocaleChange`](https://i18n.nuxtjs.org/docs/api/vue-i18n#finalizependinglocalechange) 设置语言。详见[等待页面过渡](https://i18n.nuxtjs.org/docs/guide/lang-switcher#wait-for-page-transition)。
+
+## defaultLocaleRouteNameSuffix
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'default'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+默认语言路由名称的内部后缀，仅在策略为 `prefix_and_default` 时使用，通常不需要更改。
+
+## routesNameSeparator
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'___'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+生成的每个语言路由名称间的内部分隔符，通常不需更改。
+
+## rootRedirect
+
+- 类型: `string | { statusCode: number; path: string; } | null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+指定访问根路径 (`'/'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}) 时的重定向路径。可为字符串或含有 `statusCode` 和 `path` 的对象，例如：
+
+```json
+{
+  "statusCode": 301,
+  "path": "about-us"
+}
+```
+
+## redirectStatusCode
+
+- 类型: `number`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `302`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+指定在从任何 URL（除了根 URL '/'）重定向到本地化路由时使用的 HTTP 状态代码。
+
+## langDir
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `locales`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+翻译文件目录的相对路径。
+
+路径相对于项目根目录的 `restructureDir` 解析（默认是 `'i18n'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+绝对路径在生产环境会失败（例如 `'/locales'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 应改为 `'locales'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 或 `'./locales'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+::
+
+## detectBrowserLanguage
+
+- 类型: `object | boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+启用浏览器语言检测，首次访问自动重定向到首选语言。
+
+详见[浏览器语言检测](https://i18n.nuxtjs.org/docs/guide/browser-language-detection)。
+
+::callout{icon="i-heroicons-light-bulb"}
+为更好 SEO，推荐将 `redirectOn` 设置为 `'root'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。
+::
+
+设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 禁用。
+
+支持的属性：
+
+### `alwaysRedirect`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否总是重定向到 cookie 中保存的语言，而非仅首次访问时。
+
+### `fallbackLocale`
+
+- 类型: `string | null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+浏览器语言不匹配任何可用语言时使用的回退语言。
+
+### `redirectOn`
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'root'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+支持的选项：
+
+- `'all'`：所有路径都检测浏览器语言。
+- `'root'`（推荐以提升 SEO）：仅在根路径 (`'/'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}) 检测。仅在使用非 `'no_prefix'` 策略时生效。
+- `'no prefix'`：相较 `'root'` 更宽松，检测根路径及无语言前缀的路径（如 `'/foo'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）。仅在使用非 `'no_prefix'` 策略时生效。
+
+### `useCookie`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否使用 cookie 记录用户重定向状态，防止重复重定向。设为 `false` 则每次访问都会重定向。
+
+### `cookieKey`
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'i18n_redirected'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+cookie 名称。
+
+### `cookieDomain`
+
+- 类型: `string | null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `null`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+覆盖 cookie 的默认域，默认为站点的 **host**。
+
+### `cookieCrossOrigin`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+为 `true` 时，在 cookie 上设置 `SameSite=None; Secure`，允许跨域使用（如嵌入 iframe 的情况）。
+
+### `cookieSecure`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+设置 cookie 的 `Secure` 标志。
+
+## differentDomains
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+当每种语言使用不同域名时设置为 `true`。启用时必须将 `locales` 配置为含有 `domain` 键的对象数组。详见[不同域名](https://i18n.nuxtjs.org/docs/guide/different-domains)。
+
+## multiDomainLocales
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+使用多域名和多语言时设置为 `true`。启用时必须将 `locales` 配置为含有 `domains` 和 `defaultForDomains` 键的对象数组。详见[多域名语言](https://i18n.nuxtjs.org/docs/guide/multi-domain-locales)。
+
+## compilation
+
+- 类型: `object`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `{ strictMessage: true, escapeHtml: false }`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+编译本地化消息时的行为配置。
+
+支持属性：
+
+### `strictMessage`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+严格检查本地化消息是否包含 HTML 标签。若包含，抛出错误。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+如不想抛错，可设置为 `false`，但 **可能导致 XSS 安全风险**，此时建议开启 `escapeHtml` 选项。
+::
+
+### `escapeHtml`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否对消息中的 HTML 标签进行转义。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+若禁用 `strictMessage`，建议启用此选项。
+::
+
+## bundle
+
+- 类型: `object`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `{ compositionOnly: true, runtimeOnly: false, fullInstall: true, dropMessageCompiler: false }`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+配置 nuxt i18n 模块的打包优化。
+
+支持属性：
+
+### `compositionOnly`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否仅使用 vue-i18n 的 Composition API。默认会进行遗留 API 的 tree-shaking。详情见 [此处](https://vue-i18n.intlify.dev/guide/advanced/optimization.html#reduce-bundle-size-with-feature-build-flags){rel="&#x22;nofollow&#x22;"}
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+若要使用 Vue I18n 的遗留 API，必须将 `compositionOnly: false`。**此时 Vue I18n 的 Composition API 将被禁用。**
+
+遗留 API 还可通过在 i18n.config 中设置 `allowComposition: true` 混合使用，但有限制。详情见 [这里](https://vue-i18n.intlify.dev/guide/migration/vue3.html){rel=""nofollow""}。
+::
+
+### `runtimeOnly`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否在构建时自动使用 Vue I18n 的 runtime-only 版本。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+启用此选项时，vue-i18n 消息编译器不会被打包。这意味着无法动态获取后端 API 提供的本地化消息，也无法程序化合成本地化消息。即，**必须在构建时完全解析本地化消息。**
+::
+
+### `fullInstall`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否安装完整 API、组件等。若设为 `false`，则内建组件(`<i18n-t>`, `<i18n-d>`, `<i18n-n>`)和指令(`v-t`)不会被安装到 Vue 中，会被 tree-shake。详情见 [此处](https://vue-i18n.intlify.dev/guide/advanced/optimization.html#reduce-bundle-size-with-feature-build-flags){rel="&#x22;nofollow&#x22;"}
+
+### `dropMessageCompiler`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否在打包时将消息编译器 tree-shake。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+开启此项时，**须确保应用中的资源已由 nuxt i18n 模块预编译**。若资源通过后端 API 动态加载，启用此项将导致消息编译失败。
+::
+
+### `onlyLocales`
+
+- 类型: `string | string[]`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `undefined`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+指定要包含的语言代码，未包含的将被剔除。
+
+适用于一个代码库（如 [Nuxt Layers](https://nuxt.com/docs/getting-started/layers){rel="&#x22;nofollow&#x22;"}）支持多个语言不同项目的情况。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+该 **选项不会与其他 Nuxt Layers 合并**。应只在最终项目配置中指定。
+::
+
+## experimental
+
+实验性配置对象，包含以下属性：
+
+### `localeDetector`
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `''`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 指定服务器端每次请求调用的语言检测器脚本路径。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+关于如何定义语言检测器，详见 [`defineI18nLocaleDetector()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} API](https://i18n.nuxtjs.org/docs/composables/define-i18n-locale-detector)
+::
+
+### `strictSeo`
+
+- 类型: `boolean | SeoAttributesOptions`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 启用严格的 SEO 模式。
+
+### `typedPages`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 生成用于组合式 API 和配置的路由类型。当 Nuxt 的 `experimental.typedRoutes` 启用时默认开启。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+此功能依赖于 [Nuxt 的 `experimental.typedRoutes`](https://nuxt.com/docs/guide/going-further/experimental-features#typedpages){rel=""nofollow""}，未启用则不可用。
+::
+
+### `typedOptionsAndMessages`
+
+- 类型: `false | 'default' | 'all'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - `false`：禁用类型生成
+  - `'default'`：基于配置的 `defaultLocale` 生成类型（性能更优）
+  - `'all'`：基于全部配置语言生成类型
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 生成 `vue-i18n` 和消息函数中的类型定义。
+
+### `alternateLinkCanonicalQueries`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 移除备用链接 meta 标签中的非规范查询参数。
+
+### `httpCacheDuration`
+
+- 类型: `number`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `10`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- HTTP 缓存持续时间（秒），用于消息 API 端点。控制浏览器缓存翻译数据的时长。可设置更高值（例如 `86400`，即 24 小时）以减少对未变更翻译的冗余网络请求。
+
+## `hmr`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 开发模式下热模块替换支持语言文件和 vue-i18n 配置。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+该功能仅支持使用 vite 的项目。
+::
+
+## customBlocks
+
+配置 SFC 的 `i18n` 自定义块。
+
+支持属性：
+
+### `defaultSFCLang`
+
+- 类型: `'json' | 'json5' | 'yaml' | 'yml'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'json'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 指定内联 `i18n` 自定义块的内容格式。详见 [unplugin-vue-i18n 文档](https://github.com/intlify/bundle-tools/blob/main/packages/unplugin-vue-i18n/README.md#defaultsfclang){rel="&#x22;nofollow&#x22;"}
+
+内联 `i18n` 自定义块指定了 `lang` 属性时，不适用此默认值。
+
+例如，设置 `defaultSFCLang: "yaml"` 或 `defaultSFCLang: "yml"`，如下自定义块：
+
+```vue
+<i18n lang="yaml">
+en:
+  hello: Hello
+es:
+  hello: Hola
+</i18n>
+```
+
+等同于：
+
+```vue
+<i18n>
+en:
+  hello: Hello
+es:
+  hello: Hola
+</i18n>
+```
+
+### `globalSFCScope`
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 是否将所有 SFC 上的 `i18n` 自定义块放在全局作用域。详见 [unplugin-vue-i18n 文档](https://github.com/intlify/bundle-tools/blob/main/packages/unplugin-vue-i18n/README.md#globalsfcscope){rel="&#x22;nofollow&#x22;"}
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+开启 `globalSFCScope: true`，所有 SFC 的 `i18n` 自定义块均为全局作用域，请谨慎使用。
+::
+
+例如，设置 `globalSFCScope: true`，如下自定义块：
+
+```vue
+<i18n lang="yaml" global>
+en:
+  hello: Hello
+es:
+  hello: Hola
+</i18n>
+```
+
+等同于：
+
+```vue
+<i18n lang="yaml">
+en:
+  hello: Hello
+es:
+  hello: Hola
+</i18n>
+```
+
+该功能与 `defaultSFCLang` 配合使用，例如 `defaultSFCLang: "yaml"`：
+
+```vue
+<i18n>
+en:
+  hello: Hello
+es:
+  hello: Hola
+</i18n>
+```
+
+## types
+
+- 类型: `'composition' | 'legacy'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'composition'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+强制使用的 API 类型定义风格。
+
+- 设为 `'composition'`，支持 Vue I18n 和 `@nuxtjs/i18n` 的 Composition API 类型。
+- 设为 `'legacy'`，支持 Options API 类型。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+可能需要运行 `nuxi prepare` 以更新生成的类型。
+::
+
+## debug
+
+- 类型: `boolean | 'verbose'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+是否开启 `@nuxtjs/i18n` 的调试模式。设为 `true` 或 `'verbose'` 会输出日志，后者还会输出加载的消息对象。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+此选项用于帮助排查问题。
+
+不建议在生产环境开启，会影响性能。
+::
+
+## parallelPlugin
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+设置插件为 `parallel` 类型。详见 [nuxt 插件加载策略](https://nuxt.com/docs/guide/directory-structure/plugins#loading-strategy){rel="&#x22;nofollow&#x22;"}。
+
+## restructureDir
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'i18n'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+用于解析 i18n 文件的目录配置。
+
+## autoDeclare
+
+- 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- 在 `<script setup>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 使用时，自动导入/初始化 `$t()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}, `$rt()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}, `$d()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}, `$n()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}, `$tm()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 和 `$te()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 函数。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+该功能依赖于 [Nuxt 的自动导入](https://nuxt.com/docs/guide/concepts/auto-imports){rel=""nofollow""}，若禁用则不生效。
+::
+
+## serverRoutePrefix
+
+- 类型: `string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+- 默认值: `'/_i18n'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+设置用于加载语言消息的服务器路由前缀。
+
+
+# Vue I18n
+
+::callout{icon="i-heroicons-light-bulb"}
+[Composer（用于组合式 API）](https://vue-i18n.intlify.dev/api/composition.html#composer){rel=""nofollow""} 或 [VueI18n（用于传统 API）](https://vue-i18n.intlify.dev/api/legacy.html#vuei18n){rel=""nofollow""} 的实例作为 `$i18n` 暴露在 Vue 实例上。
+::
+
+### `getLocaleCookie()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - 无参数
+- **返回**：`string | undefined`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+从存储的 locale cookie 中返回区域代码。
+
+### `setLocaleCookie()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - locale（类型：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+- **返回**：`undefined`
+
+使用指定的区域代码更新存储的 locale cookie。如果要切换区域，建议使用 `setLocale`。
+
+### `setLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - locale（类型：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+- **返回**：`Promise<void>`
+
+将应用的区域切换为指定的区域代码。如果启用了 `useCookie` 选项，locale cookie 将更新为新值。如果启用了前缀（策略不为 `no_prefix`），将导航至新区域的路由。
+
+### `loadLocaleMessages()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - locale（类型：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+- **返回**：`Promise<void>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+加载指定区域代码的翻译消息，适用于使用尚未加载的区域翻译时。
+
+### `getBrowserLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - 无参数
+- **返回**：`string | undefined`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+返回经过选项中定义的区域过滤的浏览器区域代码。
+
+### `finalizePendingLocaleChange()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - 无参数
+- **返回**：`Promise<void>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+切换至待定区域，用于当导航区域切换被 [`skipSettingLocaleOnNavigate`](https://i18n.nuxtjs.org/docs/api/options#skipsettinglocaleonnavigate) 选项阻止时。详情见 [等待页面过渡](https://i18n.nuxtjs.org/docs/guide/lang-switcher#wait-for-page-transition)。
+
+### `waitForPendingLocaleChange()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - 无参数
+- **返回**：`Promise<void>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+返回一个 Promise，当待定区域设置完成后该 Promise 被解析。
+
+### strategy
+
+- 类型：`Strategies`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+选项中指定的路由策略。
+
+### defaultDirection
+
+- **类型**：`Directions`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+选项中指定的默认方向。
+
+### defaultLocale
+
+- **类型**：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+选项中指定的默认区域。
+
+### localeCodes
+
+- **类型**：`Array<string>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+已注册区域的区域代码列表。
+
+### locales
+
+- **类型**：`Array<string | LocaleObject>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+选项中定义的区域列表。
+
+### localeProperties
+
+- **类型**：`LocaleObject`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+当前区域属性的对象。
+
+### differentDomains
+
+- **类型**：`boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+是否启用了 `differentDomains` 选项。
+
+
+# Vue
+
+## Vue 的扩展
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+列出的 API 可用于 Options API。它们为 Nuxt2 中从 `@nuxtjs/i18n` 迁移而保留。未来将被弃用。
+::
+
+### `routeBaseName()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - route（类型：`string | Route`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}，默认值：当前路由）
+- **返回值**：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+返回传入路由的基础名称（默认为当前路由）。路由的基础名称是不带有 `@nuxtjs/i18n` 添加的本地化后缀或其他元数据的名称。
+
+### `switchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - locale：（类型：`Locale`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+- **返回值**：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+返回当前路由在指定 `locale` 下的路径。
+
+另请参阅 [链接本地化](https://i18n.nuxtjs.org/docs/getting-started/usage)
+
+### `localePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - route（类型：`string | Location`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+  - locale（类型：`Locale`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}，默认值：当前语言环境）
+- **返回值**：`string`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+返回传入 `route` 的本地化路径。默认使用当前 `locale`。
+
+另请参阅 [链接本地化](https://i18n.nuxtjs.org/docs/getting-started/usage)
+
+### `localeRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - route（类型：`string | Location`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+  - locale（类型：`Locale`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}，默认值：当前语言环境）
+- **返回值**：`Route | undefined`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+返回传入 `route` 的本地化路由。默认使用当前 `locale`。
+
+另请参阅 [链接本地化](https://i18n.nuxtjs.org/docs/getting-started/usage)
+
+### `localeHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **参数**：
+  - options：（类型：`I18nHeadOptions`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}）
+- **返回值**：`I18nHeadMetaInfo`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+`options` 对象接受以下可选属性：
+
+- `dir`（类型：`boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}） - 向 HTML 元素添加 `dir` 属性。默认值：`false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+- `seo`（类型：`boolean | SeoAttributesOptions`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}） - 添加各种 SEO 属性。默认值：`false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+另请参阅 [SEO](https://i18n.nuxtjs.org/docs/guide/seo)
+
+
+# Nuxt
+
+## Nuxt 运行时应用上下文的扩展
+
+以下 API 同时暴露在 `NuxtApp`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 上。
+
+### `$i18n`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+- **类型**: [`VueI18n | Composer`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}]
+
+另见 [NuxtApp](https://nuxt.com/docs/guide/going-further/nuxt-app#accessing-nuxtapp){rel="&#x22;nofollow&#x22;"}
+
+`$i18n`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 是 Vue I18n 的全局 `Composer`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 或全局 `VueI18n`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 实例。详情请参阅 [这里](https://vue-i18n.intlify.dev/api/general.html#i18n){rel="&#x22;nofollow&#x22;"}
+
+如果你在 `@nuxtjs/i18n` 配置中将 `i18n.vueI18n.legacy` 选项设置为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，则 `$i18n`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 是一个全局 `Composer`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 实例。否则，它是一个全局的 `VueI18n`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 实例。
+
+使用示例：
+
+```ts
+export default defineNuxtPlugin(nuxtApp => {
+  nuxtApp.$i18n.onBeforeLanguageSwitch = (oldLocale, newLocale, isInitialSetup, nuxtApp) => {
+    console.log('onBeforeLanguageSwitch', oldLocale, newLocale, isInitialSetup)
+  }
+})
+```
+
+### `$routeBaseName()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+### `$switchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+### `$localePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+### `$localeRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+### `$localeHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+关于这些 API 的更多信息请参阅 [Vue 扩展](https://i18n.nuxtjs.org/docs/api/vue) 部分。
+
+## Nuxt 钩子的扩展
+
+### `'i18n:registerModule'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"} 钩子
+
+- **参数**:
+  - registerModule (类型: `({ langDir: string, locales: LocaleObject[] }) => void`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"})
+
+```ts [my-module-example/module.ts]
+import { createResolver, defineNuxtModule } from '@nuxt/kit'
+
+export default defineNuxtModule({
+  async setup(options, nuxt) {
+    const { resolve } = createResolver(import.meta.url)
+    nuxt.hook('i18n:registerModule', register => {
+      register({
+        // langDir 路径需要被解析
+        langDir: resolve('./lang'),
+        locales: [
+          {
+            code: 'en',
+            file: 'en.json',
+          },
+          {
+            code: 'fr',
+            file: 'fr.json',
+          },
+        ]
+      })
+    })
+  }
+})
+```
+
+另见 [扩展消息钩子](https://i18n.nuxtjs.org/docs/guide/extend-messages)
+
+
+# 运行时配置
+
+有些选项可以通过 `runtimeConfig` 设置，通过这种方式设置选项可以使得在构建后通过环境变量覆盖这些选项成为可能。
+
+## 用法
+
+如果你想使用环境变量来更改[支持的选项](https://i18n.nuxtjs.org/#supported-options)，你需要把这些选项设置在 `runtimeConfig.public.i18n` 中。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+    modules: ['@nuxtjs/i18n'],
+    i18n: {
+        // 保留想通过 `runtimeConfig` 设置的选项不设置
+        // baseUrl: 'https://example.com',
+    },
+    runtimeConfig: {
+        public: {
+            i18n: {
+                baseUrl: 'https://example.com',
+                domainLocales: {}
+                // 其他选项 ...
+            }
+        }
+    }
+})
+```
+
+你可以在[Nuxt 文档](https://nuxt.com/docs/guide/going-further/runtime-config#environment-variables){rel="&#x22;nofollow&#x22;"}中了解更多关于其工作原理的内容。
+
+::callout{type="warning"}
+`runtimeConfig` 中仅支持[可序列化的值](https://nuxt.com/docs/guide/going-further/runtime-config#serialization){rel=""nofollow""}，通过这种方式设置的选项可能无法支持所有可用类型（例如函数），而默认配置通常支持这些类型。
+::
+
+::callout{type="info"}
+如果你希望支持其他选项，可以提交一个 issue 来描述你的使用场景，或者自己发起 PR 来添加支持！
+::
+
+## 支持的选项
+
+模块配置优先级更高，只有当选项未被设置时，才会使用通过 `runtimeConfig` 设置的值。
+
+以下选项可以通过 `runtimeConfig` 设置：
+
+### `baseUrl`
+
+- 键名: `NUXT_PUBLIC_I18N_BASE_URL`
+
+此运行时配置选项与模块选项中的 [`baseUrl`](https://i18n.nuxtjs.org/docs/api/options#baseUrl) 相同。
+
+::callout{type="warning"}
+注意：`baseUrl` 模块选项允许你设置函数，但由于限制，运行时配置中不支持函数设置。
+::
+
+### `domainLocales`
+
+- 属性: `domainLocales[code].domain`
+- 键名: `NUXT_PUBLIC_I18N_DOMAIN_LOCALES_{code}_DOMAIN`
+
+此运行时配置选项允许覆盖 [`locales`](https://i18n.nuxtjs.org/docs/api/options#locales) 模块选项中设置的域名。
+
+
+# <NuxtLinkLocale>
+
+此组件基于 [`<NuxtLink>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"}](https://nuxt.com/docs/api/components/nuxt-link#nuxtlink){rel="&#x22;nofollow&#x22;"} 构建，但通过内部使用 [`localePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}](https://i18n.nuxtjs.org/docs/api/vue#localepath) 改变了默认行为，使链接到本地化路由更加方便。
+
+### Props
+
+此组件支持所有[ `<NuxtLink>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 文档中描述的 props](https://nuxt.com/docs/api/components/nuxt-link#props){rel="&#x22;nofollow&#x22;"}，并额外支持下面描述的 props。
+
+| 属性       | 说明                                                                                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `locale` | 可选属性，用于强制使用传入的 Locale 进行本地化，默认为当前语言环境。与 `localePath()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"} 的 `locale` 参数相同。 |
+
+### 示例
+
+#### 基本用法
+
+```vue
+<template>
+  <NuxtLinkLocale to="/">{{ $t('home') }}</NuxtLinkLocale>
+</template>
+
+<!-- 等同于 -->
+
+<script setup>
+const localePath = useLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="localePath('/')">{{ $t('home') }}</NuxtLink>
+</template>
+```
+
+#### 强制指定语言环境
+
+```vue
+<template>
+  <NuxtLinkLocale to="/" locale="nl">{{ $t('home') }}</NuxtLinkLocale>
+</template>
+
+<!-- 等同于 -->
+
+<script setup>
+const localePath = useLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="localePath('/', 'nl')">{{ $t('home') }}</NuxtLink>
+</template>
+```
+
+
+# <SwitchLocalePathLink>
+
+该组件作为一个受限的 [`<NuxtLink>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"}](https://nuxt.com/docs/api/components/nuxt-link#nuxtlink){rel="&#x22;nofollow&#x22;"}，内部使用 `switchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 来链接到指定语言版本的同一页面。
+
+我们特别推荐将此组件用于语言切换器，因为它能够在服务端渲染期间正确更新包含动态路由参数的路径。
+
+### Props
+
+该组件支持大部分但不是全部 [`<NuxtLink>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"}](https://nuxt.com/docs/api/components/nuxt-link#props){rel="&#x22;nofollow&#x22;"} 中记录的 props（不支持 `to` 或 `href`），另外还支持下述 props。
+
+| Prop     | 说明                                                                                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `locale` | 可选属性，强制使用传入的 Locale 进行本地化，默认为当前 locale。与 `switchLocalePath()`{.language-ts.shiki.shiki-themes.material-theme-lighter.material-theme.material-theme-palenight lang="ts"} 的 `locale` 参数功能相同。 |
+
+### 示例
+
+#### 基础用法
+
+```vue
+<template>
+  <SwitchLocalePathLink locale="nl">荷兰语</SwitchLocalePathLink>
+  <SwitchLocalePathLink locale="en">英语</SwitchLocalePathLink>
+</template>
+
+<!-- 等同于 -->
+
+<script setup>
+const switchLocalePath = useSwitchLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="switchLocalePath('nl')">荷兰语</NuxtLink>
+  <NuxtLink :to="switchLocalePath('en')">英语</NuxtLink>
+</template>
+```
+
+
+# useLocalePath
+
+`useLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合函数返回一个根据当前语言环境解析路径的函数。
+
+## 类型
+
+```ts
+declare function useLocalePath(
+  options?: I18nCommonRoutingOptionsWithComposable
+): (route: RawLocation | RouteLocation, locale?: Locale) => string
+```
+
+## 用法
+
+```vue
+<script setup>
+const localePath = useLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="localePath('index')">{{ $t('home') }}</NuxtLink>
+</template>
+```
+
+
+# useLocaleRoute
+
+`useLocaleRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数返回一个根据当前语言环境解析路由的函数。
+
+## 类型
+
+```ts
+declare function useLocaleRoute(
+  options?: I18nCommonRoutingOptionsWithComposable
+): (route: RawLocation | RouteLocation, locale?: Locale) => Route | (RouteLocation & { href: string }) | undefined
+```
+
+## 用法
+
+```vue
+<script setup>
+const localeRoute = useLocaleRoute()
+const { locale } = useI18n()
+const linkPath = computed(() => {
+  const route = localeRoute('blog', locale.value)
+  return route != null ? route.path : '/'
+})
+</script>
+
+<template>
+  <NuxtLink :to="linkPath">{{ $t('blog') }}</NuxtLink>
+</template>
+```
+
+
+# useSwitchLocalePath
+
+`useSwitchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数返回一个允许切换语言环境的函数。
+
+## 类型
+
+```ts
+declare function useSwitchLocalePath(options?: I18nCommonRoutingOptionsWithComposable): (locale?: Locale) => string
+```
+
+## 用法
+
+```vue
+<script setup>
+const switchLocalePath = useSwitchLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="switchLocalePath('en')">English</NuxtLink>
+  <NuxtLink :to="switchLocalePath('fr')">Français</NuxtLink>
+</template>
+```
+
+
+# useLocaleHead
+
+`useLocaleHead()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数返回与本地化相关的头部属性。
+
+## 类型
+
+```ts
+declare function useLocaleHead(options: I18nHeadOptions): Ref<I18nHeadMetaInfo>
+```
+
+## 参数
+
+### `options`
+
+一个对象，接受以下可选字段：
+
+- `dir`
+  - 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+  - 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+  - 向 HTML 元素添加 `dir` 属性。
+- `lang`
+  - 类型: `boolean`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+  - 默认值: `true`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+  - 向 HTML 元素添加 `lang` 属性。
+- `seo`
+  - 类型: `boolean | SeoAttributesOptions`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+  - 添加各种 SEO 属性。
+
+## 用法
+
+```vue
+<script setup>
+const i18nHead = useLocaleHead({
+  seo: {
+    canonicalQueries: ['foo']
+  }
+})
+useHead(() => ({
+  htmlAttrs: {
+    lang: i18nHead.value.htmlAttrs!.lang
+  },
+  link: [...(i18nHead.value.link || [])],
+  meta: [...(i18nHead.value.meta || [])]
+}))
+</script>
+```
+
+
+# useSetI18nParams
+
+`useSetI18nParams()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 返回一个用于设置当前路由翻译参数的函数。 :br
+关于其用法的更多细节，请参阅[语言切换指南](https://i18n.nuxtjs.org/docs/guide/lang-switcher#dynamic-route-parameters)。
+
+## 类型
+
+```ts
+declare function useSetI18nParams(options?: SeoAttributesOptions): (locale: Record<Locale, unknown>) => void
+```
+
+## 参数
+
+### `options`
+
+**类型**: `SeoAttributesOptions | undefined`
+
+一个 `SeoAttributesOptions` 对象，默认值为 `undefined`。更多详情请参阅[SEO 指南](https://i18n.nuxtjs.org/docs/guide/seo#feature-details)。
+
+## 用法
+
+```vue
+<script setup>
+// 从 API 获取产品数据…（红色马克杯）
+
+const setI18nParams = useSetI18nParams({
+  canonicalQueries: ['foo']
+})
+setI18nParams({
+  en: { slug: data.slugs.en }, // slug: 'red-mug'
+  nl: { slug: data.slugs.nl }  // slug: 'rode-mok'
+})
+
+const switchLocalePath = useSwitchLocalePath()
+switchLocalePath('en') // /products/red-mug
+switchLocalePath('nl') // /nl/products/rode-mok
+</script>
+
+<template>
+  <!-- pages/products/[slug].vue -->
+</template>
+```
+
+
+# useRouteBaseName
+
+`useRouteBaseName()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数返回一个函数，该函数用于获取路由的基本名称。
+
+## 类型
+
+```ts
+declare function useRouteBaseName(
+  options?: I18nCommonRoutingOptionsWithComposable
+): (givenRoute: string | Route | RouteLocationNormalizedLoaded) => string | undefined
+```
+
+## 用法
+
+```vue
+<script setup>
+const route = useRoute()
+const routeBaseName = useRouteBaseName()
+const baseRouteName = computed(() => routeBaseName(route))
+// 或者
+const baseRouteNameString = computed(() => routeBaseName(route.name))
+</script>
+
+<template>
+  <p>路由基本名称: {{ baseRouteName }}</p>
+</template>
+```
+
+
+# useBrowserLocale
+
+`useBrowserLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数返回浏览器的语言环境。
+
+如果该组合式函数在客户端调用，它会从 `navigator.languages` 的值中检测语言环境。
+
+否则在服务器端，则从 `accept-language` 头的值中检测语言环境。
+
+## 类型
+
+```ts
+declare function useBrowserLocale(): string | null
+```
+
+
+# useCookieLocale
+
+`useCookieLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数返回 cookie 语言环境。
+
+如果此组合式函数在客户端调用，它会通过 `useCookie()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 从 `document.cookie` 的值中检测语言环境；如果在服务器端调用，则从 `cookie` 头的值中检测语言环境。
+
+请注意，如果 `detectBrowserLanguage.useCookie` 的值为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}，则总是返回 **空字符串**。
+
+## 类型
+
+```ts
+declare function useCookieLocale(): Ref<string>
+```
+
+
+# useTranslation
+
+`useTranslation()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合函数返回翻译函数。
+
+翻译函数使用的语言环境是由 [`experimental.localeDetector` 选项](https://i18n.nuxtjs.org/docs/api/options#experimental) 中定义的函数检测到的语言环境。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+**此组合函数为实验性功能，仅适用于服务器端。**
+::
+
+## 类型
+
+```ts
+declare function useTranslation<Schema extends Record<string, any> = {}, Event extends H3Event = H3Event>(
+  event: Event
+): Promise<TranslationFunction<Schema, DefineLocaleMessage>>
+```
+
+## 用法
+
+```ts
+export default defineEventHandler(async event => {
+  const t = await useTranslation(event)
+  return {
+    hello: t('hello')
+  }
+})
+```
+
+
+# defineI18nConfig
+
+`defineI18nConfig()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合函数用于定义一个函数，该函数返回传递给 Nuxt I18n 模块中 `createI18n()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 选项的 vue-i18n 配置。
+
+加载器函数需要返回一个函数或 Promise，该函数或 Promise 解析为 vue-i18n 配置对象。
+
+有关 vue-i18n 配置的更多详细信息，请参阅 [Vue I18n 文档](https://vue-i18n.intlify.dev/api/general.html#createi18n){rel="&#x22;nofollow&#x22;"}。
+
+## 类型
+
+```ts
+export function defineI18nConfig<Config extends I18nOptions>(
+  loader: () => Config | Promise<Config>
+): () => Config | Promise<Config>
+```
+
+## 参数
+
+### `loader`
+
+一个函数，用于加载 vue-i18n 配置选项。
+
+## 用法
+
+定义一个简单的 vue-i18n 配置对象的示例：
+
+```ts
+export default defineI18nConfig(() => ({
+  legacy: false,
+  locale: 'en',
+  messages: {
+    en: {
+      welcome: 'Welcome'
+    },
+    fr: {
+      welcome: 'Bienvenue'
+    }
+  }
+}))
+```
+
+
+# defineI18nLocale
+
+`defineI18nLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 组合式函数用于定义一个函数，以动态加载用于[懒加载翻译](https://i18n.nuxtjs.org/docs/guide/lazy-load-translations)的本地化消息。
+
+加载器函数需要返回一个解析为消息对象的 `Promise`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。
+
+## 类型
+
+```ts
+declare function defineI18nLocale<Messages = LocaleMessages<DefineLocaleMessage>, Locales = Locale>(
+  loader: (locale: Locales) => Messages | Promise<Messages>
+): (locale: Locales) => Messages | Promise<Messages>
+```
+
+## 参数
+
+### `loader`
+
+一个动态加载本地化消息的函数，具有以下参数：
+
+- `locale`:br**类型**: `Locale`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}:br 目标 locale，由 nuxt i18n 模块传入。当 locale 在以下情况切换时传入：
+  - 当你使用 `setLocale()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 切换 locale 时。
+  - 当通过 `<NuxtLink>`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="html"} 切换 locale 时。例如，通过 `useSwitchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 或 `$switchLocalePath()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 解析的路由路径。
+
+## 使用
+
+使用 fetch 请求加载本地化消息的加载器函数示例：
+
+```ts
+export default defineI18nLocale(locale => {
+  return $fetch(`https://your-company-product/api/${locale}`)
+})
+```
+
+
+# defineI18nLocaleDetector
+
+`defineI18nLocaleDetector()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 是一个组合函数，用于定义一个在服务器端检测语言环境的函数，该函数会在服务器端对每个请求调用。
+
+该函数需要返回一个语言环境字符串。
+
+你可以在语言环境检测函数中使用[`@intlify/h3` 工具](https://github.com/intlify/h3#%EF%B8%8F-utilites--helpers){rel="&#x22;nofollow&#x22;"}，这些工具会自动导入。
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle"}
+**此组合函数为实验性功能。** 你需要在 [`experimental.localeDetector` 选项](https://i18n.nuxtjs.org/docs/api/options#experimental) 中配置文件路径。
+::
+
+## 类型
+
+```ts
+type LocaleConfig = {
+  defaultLocale: Locale
+  fallbackLocale: FallbackLocale
+}
+declare function defineI18nLocaleDetector(
+  detector: (event: H3Event, config: LocaleConfig) => string
+): (event: H3Event, config: LocaleConfig) => string
+```
+
+## 参数
+
+### `detector`
+
+一个作为语言环境检测器的函数，具有以下参数：
+
+- `event`
+  - 类型：`H3Event`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 一个 H3 事件。详情见 [H3 API 文档](https://www.jsdocs.io/package/h3#H3Event){rel="&#x22;nofollow&#x22;"}
+- `config`
+  - 类型：`object`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+  - 从 Nitro 传入的语言环境配置。
+  - 属性：
+    - `defaultLocale`
+      - 类型：`Locale`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+      - 该值设置为 Nuxt i18n 的 `defaultLocale` 选项。如果未设置，则取自 Vue I18n 配置中的 `locale` 选项（即在 `vueI18n` 选项中设置的 `i18n.config` 文件）。如果两者均未设置，则默认值为 `'en-US'`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}。
+    - `fallbackLocale`
+      - 类型：`FallbackLocale`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+      - 该值设置为从 Vue I18n 配置（`vueI18n` 选项中设置的 `i18n.config` 文件）加载的 `fallbackLocale` 选项。如果未配置回退语言环境，则默认值为 `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}。
+
+## 用法
+
+下面是一个语言环境检测器的示例：
+
+```ts
+// 根据查询参数、cookie、请求头检测语言环境
+export default defineI18nLocaleDetector((event, config) => {
+  const query = tryQueryLocale(event, { lang: '' })
+  if (query) {
+    return query.toString()
+  }
+
+  const cookie = tryCookieLocale(event, { lang: '', name: 'i18n_locale' })
+  if (cookie) {
+    return cookie.toString()
+  }
+
+  const header = tryHeaderLocale(event, { lang: '' })
+  if (header) {
+    return header.toString()
+  }
+
+  return config.defaultLocale
+})
+```
+
+
+# defineI18nRoute
+
+::callout{color="warning" icon="i-heroicons-exclamation-triangle" title="注意"}
+此宏已被弃用，建议使用 `definePageMeta()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 来设置本地化路径，并将在 v11 中移除。
+
+:br
+
+更多详情请参见[自定义路径](https://i18n.nuxtjs.org/docs/guide/custom-paths#definepagemeta)一节。
+::
+
+`defineI18nRoute()`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"} 是一个编译器宏，您可以用它来为位于 `pages/` 目录中的**页面**组件设置自定义路由路径（除非[另行设置](https://nuxt.com/docs/api/configuration/nuxt-config#pages-1){rel="&#x22;nofollow&#x22;"}）。这样，您可以为 Nuxt 应用中的每个静态或动态路由设置自定义路由路径。
+
+```vue [pages/some-page.vue]
+<script setup>
+defineI18nRoute({
+  paths: {
+    en: '/about-us',
+    fr: '/a-propos',
+    ja: '/about-ja'
+  }
+})
+</script>
+```
+
+## 类型
+
+```ts
+defineI18nRoute(route: I18nRoute | false) => void
+
+interface I18nRoute {
+  paths?: Record<Locale, `/${string}`>
+  locales?: Locale[]
+}
+```
+
+## 参数
+
+### `false`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts"}
+
+禁用目标页面组件路由的本地化。
+
+### `I18nRoute`{.shiki,shiki-themes,material-theme-lighter,material-theme,material-theme-palenight lang="ts-type"}
+
+一个接受以下国际化路由设置的对象：
+
+- **`paths`**
+  - **类型**: `Record<Locale, `/${string}`>`:br 为每个语言环境自定义页面组件路由。您可以为 vue-router 指定静态和动态路径。
+- **`locales`**
+  - **类型**: `Locale[]`:br 页面组件应本地化的某些语言环境列表。

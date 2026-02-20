@@ -1,0 +1,183 @@
+# 语言切换器
+
+> 如何更改您的网站当前语言。
+
+当在应用中加载 **Nuxt i18n 模块** 时，它会将您的 `locales` 配置添加到 `nuxtApp.$i18n`（或 `this.$i18n`），这使得在应用中的任何地方显示语言切换器变得非常简单。
+
+下面是一个语言切换器的示例，在每个 locale 对象中添加了一个 `name` 键，以便为每个链接显示更友好的标题：
+
+```vue
+<script setup>
+const { locale, locales } = useI18n()
+const switchLocalePath = useSwitchLocalePath()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  <NuxtLink v-for="locale in availableLocales" :key="locale.code" :to="switchLocalePath(locale.code)">
+    {{ locale.name }}
+  </NuxtLink>
+</template>
+```
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        name: 'English'
+      },
+      {
+        code: 'es',
+        name: 'Español'
+      },
+      {
+        code: 'fr',
+        name: 'Français'
+      }
+    ]
+  }
+})
+```
+
+<callout icon="i-heroicons-light-bulb">
+
+当使用 `detectBrowserLanguage` 并想在路由切换时保持语言状态时，必须显式更新存储的语言 cookie。可以通过 [`setLocaleCookie(locale)`](/docs/api/vue-i18n#setlocalecookie) 或 [`setLocale(locale)`](/docs/api/vue-i18n#setlocale) 来完成，此操作会设置 cookie 并切换到指定语言的路由。不这样做可能导致在导航过程中，根据语言 cookie 中设置的语言产生重定向。
+
+</callout>
+
+例如，模板代码可能如下所示：
+
+```vue
+<script setup>
+const { locale, locales, setLocale } = useI18n()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  ...
+  <a href="#" v-for="locale in availableLocales" :key="locale.code" @click.prevent.stop="setLocale(locale.code)">
+    {{ locale.name }}
+  </a>
+  ...
+</template>
+```
+
+## 等待页面过渡
+
+默认情况下，当导航到具有不同语言的路由时，语言会立即切换，这意味着如果您有页面过渡效果，页面会先淡出，此时文本已切换为新语言，然后再淡入展示相同内容。
+
+为了解决此问题，可以将选项 [`skipSettingLocaleOnNavigate`](/docs/api/options#skipsettinglocaleonnavigate) 设置为 `true`，并在插件中通过 `onBeforeEnter` 过渡钩子来手动处理语言设置。
+
+### 全局过渡
+
+如果您想为整个 Nuxt 应用设置过渡，可以使用 [`NuxtPage` 的 `transition`](https://nuxt.com/docs/getting-started/transitions#transition-with-nuxtpage) 来进行如下控制：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    // ... 您的其他配置
+    skipSettingLocaleOnNavigate: true
+  }
+}
+```
+
+```vue [pages/app.vue]
+<script setup lang="ts">
+const { finalizePendingLocaleChange } = useI18n()
+
+const onBeforeEnter = async () => {
+  await finalizePendingLocaleChange()
+}
+</script>
+
+<template>
+  <NuxtLayout>
+    <NuxtPage
+      :transition="{
+        name: 'my',
+        mode: 'out-in',
+        onBeforeEnter
+      }"
+    />
+  </NuxtLayout>
+</template>
+
+<style>
+.my-enter-active,
+.my-leave-active {
+  transition: opacity 0.3s;
+}
+.my-enter,
+.my-leave-active {
+  opacity: 0;
+}
+</style>
+```
+
+可选地，使用 [路由器选项](https://nuxt.com/docs/guide/directory-structure/pages#router-options) 在滚动之前等待语言切换，以实现更平滑的过渡：
+
+```ts [app/router.options.ts]
+import type { RouterConfig } from '@nuxt/schema'
+
+export default <RouterConfig>{
+  async scrollBehavior(to, from, savedPosition) {
+    const nuxtApp = useNuxtApp()
+
+    // 确保路由已更改。
+    if (nuxtApp.$i18n && to.name !== from.name) {
+      // `$i18n` 在 nuxtjs/i18n 模块的 `setup` 中注入。
+      // `scrollBehavior` 会等待 i18n 语言切换完成后再执行
+      await nuxtApp.$i18n.waitForPendingLocaleChange()
+    }
+
+    return savedPosition || { top: 0 }
+  }
+}
+```
+
+### 每个页面组件的过渡
+
+如果在页面组件中使用 [`definePageMeta()`](https://nuxt.com/docs/guide/directory-structure/pages#page-metadata) 定义了特定的过渡，需要在 `pageTransition` 的 `onBeforeEnter` 钩子中添加 `finalizePendingLocaleChange`。
+
+示例：
+
+```vue [pages/about.vue]
+<script setup lang="ts">
+const route = useRoute()
+const { finalizePendingLocaleChange } = useI18n()
+
+definePageMeta({
+  pageTransition: {
+    name: 'page',
+    mode: 'out-in'
+  }
+})
+
+route.meta.pageTransition.onBeforeEnter = async () => {
+  await finalizePendingLocaleChange()
+}
+</script>
+
+<style scoped>
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 1s;
+}
+.page-enter,
+.page-leave-active {
+  opacity: 0;
+}
+</style>
+```
+
+## Vue i18n 注意事项
+
+与 Vue i18n 不同，您不应该直接设置 `locale`，而应通过使用 [`setLocale()`](/docs/api/vue-i18n#setlocale) 或导航到 [`switchLocalePath()`](/docs/composables/use-switch-locale-path) 返回的路由来切换语言。这样会加载翻译、触发钩子并在使用时更新语言 cookie。

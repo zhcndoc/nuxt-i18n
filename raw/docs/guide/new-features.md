@@ -1,0 +1,45 @@
+# 新功能
+
+> v10 中的新内容
+
+### 通过 `definePageMeta()` 自定义路由{lang="ts"}
+
+我们新增了通过 `definePageMeta()` API 为页面设置自定义路由的支持，这已经成为为页面设置自定义路由的推荐方式。
+该方法通过在模块选项中设置 `customRoutes: 'meta'` 来启用。
+
+要从 `defineI18nRoute()` 宏迁移，只需将其替换为 `definePageMeta()`，并使用相同的选项设置 `i18n` 属性：
+
+```vue [pages/about.vue]
+<script setup>
+definePageMeta({
+  i18n: {
+    paths: {
+      en: '/about-us',
+      fr: '/a-propos',
+    }
+  }
+})
+</script>
+```
+
+### Nitro 端语言检测与重定向
+
+语言检测和重定向已重新实现为由 Nitro 服务器处理，这使我们能够在请求生命周期的更早阶段进行重定向，从而提升性能。
+
+之前的实现与预渲染结合使用时效果不佳，而新的实现解决了这个问题。
+
+此更改使检测和重定向更加准确，更符合文档中描述的行为，但如果这在您的项目中引发问题，可以通过在模块选项中设置 `experimental.nitroContextDetection: false` 来禁用此功能。禁用该功能的选项为临时措施，未来版本将移除。
+
+### 实验性严格 SEO 模式
+
+我们新增了实验性选项 `strictSeo`，启用严格 SEO 模式，它改变了 i18n 头标签的处理方式。
+
+启用严格 SEO 模式后，i18n 头标签将由模块内部管理，这带来了多个备受期待的改进：
+
+- 设置本地化动态路由参数时，模块将不再为不支持的语言添加 alternate 标签。
+- 使用 `<SwitchLocalePathLink>` 的不支持语言链接将被禁用，其链接会被设置为 `'#'`，并带有用于样式的 `data-i18n-disabled` 属性。
+- 在严格 SEO 模式下不再需要 `useLocaleHead()`，i18n 标签由模块自动设置，使用该函数将抛出错误。
+- 规范化查询参数通过全局配置 `experimental.strictSeo.canonicalQueryParams` 进行设置。
+- `useSetI18nParams()` 会继承全局规范化查询参数配置，并可通过其选项参数覆盖。
+
+如果该模式稳定，将在 v11 中成为默认选项，请尝试并反馈您遇到的任何问题。

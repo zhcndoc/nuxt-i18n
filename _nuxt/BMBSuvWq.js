@@ -1,0 +1,1 @@
+import{b1 as u,b5 as a,v as p,b9 as r}from"./DQvYMTKG.js";function c(o={}){const e=u(),n=a().path||"/";if(e.payload.path===n){const s=p(!1);s.value=!0}}function f(o,e={},t={}){return c({...t})}function g(){a();function o({title:e="",description:t="",headline:n=""}){r({title:e,ogTitle:e,description:t,ogDescription:t}),f("Docs",{})}return{setPageMeta:o}}export{g as u};

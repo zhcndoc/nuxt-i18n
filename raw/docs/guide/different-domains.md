@@ -1,0 +1,191 @@
+# 不同的域名
+
+> 为您的应用支持的每种语言使用不同的域名。
+
+您可能希望为您的应用支持的每种语言使用不同的域名。
+
+实现方法如下：
+
+- 将 `differentDomains` 选项设置为 `true`
+- 将 `locales` 选项配置为对象数组，每个对象包含一个 `domain` 键，其值为您希望为该语言使用的域名。可选地包含端口（如果是非标准端口）和/或协议。如果未提供协议，则会尝试自动检测，但在某些情况下（例如页面是静态生成时）可能无法正确工作。
+- 可选地将 `detectBrowserLanguage` 设置为 `false`。启用时（默认启用），用户首次访问时可能会被重定向到不同的域。若希望确保访问特定域始终显示对应语言的页面，请设置为 `false`。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        domain: 'mydomain.com'
+      },
+      {
+        code: 'es',
+        domain: 'es.mydomain.com'
+      },
+      {
+        code: 'fr',
+        domain: 'fr.mydomain.com'
+      },
+      {
+        code: 'pl',
+        domain: 'http://pl.mydomain.com'
+      },
+      {
+        code: 'ua',
+        domain: 'https://ua.mydomain.com'
+      }
+    ],
+    differentDomains: true
+    // 或仅在生产环境启用该选项
+    // differentDomains: (process.env.NODE_ENV === 'production')
+  }
+})
+```
+
+使用不同的域名时，您的语言切换器应使用普通的 `<a>` 标签：
+
+```vue
+<script setup>
+const { locale, locales } = useI18n()
+const switchLocalePath = useSwitchLocalePath()
+
+const availableLocales = computed(() => {
+  return locales.value.filter(i => i.code !== locale.value)
+})
+</script>
+
+<template>
+  ...
+  <a v-for="locale in availableLocales" :href="switchLocalePath(locale.code)" :key="locale.code">
+    {{ locale.code }}
+  </a>
+  ...
+</template>
+```
+
+## 运行时环境变量
+
+有时需要在不同环境中更改域名，例如预生产和生产环境。
+由于 `nuxt.config.ts` 在构建时使用，因此需要为不同环境创建不同的构建版本。
+
+```ts [locale-domains.config.ts]
+export const localeDomains = {
+  uk: process.env.DOMAIN_UK,
+  fr: process.env.DOMAIN_FR
+}
+```
+
+```ts [nuxt.config.ts]
+import { localeDomains } from './locale-domains.config'
+
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+
+  i18n: {
+    differentDomains: process.env.NODE_ENV === 'production',
+    locales: [
+      {
+        code: 'uk',
+        domain: localeDomains.uk
+      },
+      {
+        code: 'fr',
+        domain: localeDomains.fr
+      }
+    ]
+  }
+})
+```
+
+根据以上配置，分别为预生产和生产环境运行构建时，需要使用不同的 `.env` 文件来指定 `DOMAIN_UK` 和 `DOMAIN_FR`。
+
+或者，为了避免多次构建的需求，可以通过运行时环境变量来覆盖区域设置域。变量名称应遵循格式 `NUXT_PUBLIC_I18N_DOMAIN_LOCALES_{code}_DOMAIN`。
+
+例如：
+
+```shell [production.env]
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_UK_DOMAIN=uk.example.test
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_FR_DOMAIN=fr.example.test
+```
+
+```shell [staging.env]
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_UK_DOMAIN=uk.staging.example.test
+NUXT_PUBLIC_I18N_DOMAIN_LOCALES_FR_DOMAIN=fr.staging.example.test
+```
+
+## 仅部分语言使用不同域名
+
+如果一个或多个域名需要托管多种语言，则每个域的默认语言需要设置 `domainDefault: true`，以便针对该域有一个默认语言备用。
+不过，`differentDomains` 选项仍需设置为 `true`。
+
+```js [nuxt.config.js]
+export default defineNuxtConfig({
+  // ...
+  i18n: {
+    locales: [
+      {
+        code: 'en',
+        domain: 'mydomain.com',
+        domainDefault: true
+      },
+      {
+        code: 'pl',
+        domain: 'mydomain.com'
+      },
+      {
+        code: 'ua',
+        domain: 'mydomain.com'
+      },
+      {
+        code: 'es',
+        domain: 'es.mydomain.com',
+        domainDefault: true
+      },
+      {
+        code: 'fr',
+        domain: 'fr.mydomain.com',
+        domainDefault: true
+      }
+    ],
+    strategy: 'prefix',
+    differentDomains: true
+    // 或仅在生产环境启用该选项
+    // differentDomains: (process.env.NODE_ENV === 'production')
+  },
+  // ...
+})
+```
+
+基于上述配置和 `'prefix'` 策略，以下请求将被重定向为：
+
+- [https://mydomain.com](https://mydomain.com) -> [https://mydomain.com/en](https://mydomain.com/en) （英语）
+- [https://mydomain.com/pl](https://mydomain.com/pl) -> [https://mydomain.com/pl](https://mydomain.com/pl) （波兰语）
+- [https://mydomain.com/ua](https://mydomain.com/ua) -> [https://mydomain.com/ua](https://mydomain.com/ua) （乌克兰语）
+- [https://es.mydomain.com](https://es.mydomain.com) -> [https://es.mydomain.com/es](https://es.mydomain.com/es) （西班牙语）
+- [https://fr.mydomain.com](https://fr.mydomain.com) -> [https://fr.mydomain.com/fr](https://fr.mydomain.com/fr) （法语）
+
+使用 `'prefix_except_default'` 策略时，相同请求为：
+
+- [https://mydomain.com](https://mydomain.com) -> [https://mydomain.com](https://mydomain.com) （英语）
+- [https://mydomain.com/pl](https://mydomain.com/pl) -> [https://mydomain.com/pl](https://mydomain.com/pl) （波兰语）
+- [https://mydomain.com/ua](https://mydomain.com/ua) -> [https://mydomain.com/ua](https://mydomain.com/ua) （乌克兰语）
+- [https://es.mydomain.com](https://es.mydomain.com) -> [https://es.mydomain.com](https://es.mydomain.com) （西班牙语）
+- [https://fr.mydomain.com](https://fr.mydomain.com) -> [https://fr.mydomain.com](https://fr.mydomain.com) （法语）
+
+## 不同域的缓存考虑事项
+
+在使用不同域时，请确保正确配置缓存，以便每个域的响应能够正确分离。
+
+因为同一路由可能在多个域名下提供服务（例如 `en.mydomain.com` 和 `fr.mydomain.com`），缓存需要根据请求主机进行变化。否则，为一个域生成的响应可能会在另一个域上被重用，导致错误的语言渲染，从而导致水合不匹配和客户端的可见闪烁。
+
+推荐的设置是在您的路由规则中使用 `cache.varies: ['host']`，以便将 `host` 头包含在缓存键中：
+
+```diff [nuxt.config.ts]
+export default defineNuxtConfig({
+  routeRules: {
+-    '/': { swr: 60 },
++    '/': { swr: 60, cache: { varies: ['host'] } },
+  },
+  // ...
+})
+```

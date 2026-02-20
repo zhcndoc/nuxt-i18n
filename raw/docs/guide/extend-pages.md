@@ -1,0 +1,23 @@
+# 扩展页面
+
+> 从模块添加本地化页面。
+
+如果你是**模块作者**，并希望你的模块向项目中添加额外的页面，可以使用 `'pages:extend'` Nuxt 钩子来实现。
+
+```ts [modules/example-module/index.ts]
+import { defineNuxtModule, createResolver } from '@nuxt/kit'
+
+export default defineNuxtModule({
+  setup(options, nuxt) {
+    const { resolve } = createResolver(import.meta.url)
+
+    nuxt.hook('pages:extend', pages => {
+      pages.push({
+        name: 'example-page',
+        path: '/example-page',
+        file: resolve(__dirname, './pages/example-page.vue')
+      })
+    })
+  }
+})
+```

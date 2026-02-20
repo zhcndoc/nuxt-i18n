@@ -1,0 +1,110 @@
+# 层级
+
+> 使用层级扩展 Nuxt i18n 项目。
+
+Nuxt i18n 模块支持层级，并会自动合并所有扩展层的 i18n 配置。[在此处了解更多关于层级的信息](https://nuxt.com/docs/getting-started/layers)
+
+## 合并策略
+
+如 [Nuxt 层编写指南](https://nuxt.com/docs/guide/going-further/layers#multi-layer-support-for-nuxt-modules) 所述：
+
+> - `_layers` 数组中较早的项具有更高优先级，会覆盖后面的项
+> - 用户的项目是 `_layers` 数组中的第一项
+
+混合本地化配置（如延迟加载对象和字符串）可能不会如预期工作，Nuxt i18n 会尽力合并层级。确保各层间 i18n 配置的一致性将更为有效。
+
+## 页面 & 路由
+
+来自扩展层的 `pages` 目录中的页面会自动合并，并具备 i18n 支持，就如同它们是你项目的一部分。
+
+在每个层的配置中 `i18n.pages` 定义的页面路由也会被合并。
+
+## 本地化语言
+
+扩展了已设置 Nuxt i18n 模块层的项目无需额外配置，如下示例所示：
+
+<code-group>
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  extends: ['my-layer']
+})
+```
+
+```ts [my-layer/nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    locales: [
+      { code: 'en', file: 'en.json' },
+      { code: 'nl', file: 'nl.json' }
+    ]
+  }
+})
+```
+
+</code-group>
+
+项目能够使用 i18n 功能，所配置的本地化语言文件由扩展的层提供并加载。
+
+### 合并本地化语言
+
+项目中提供的本地化语言会与扩展层提供的合并，做法如下：
+
+<code-group>
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  extends: ['my-layer'],
+  i18n: {
+    locales: [{ code: 'en', file: 'en.json' }]
+  }
+})
+```
+
+```ts [my-layer/nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@nuxtjs/i18n'],
+  i18n: {
+    locales: [
+      { code: 'en', file: 'en.json' },
+      { code: 'nl', file: 'nl.json' }
+    ]
+  }
+})
+```
+
+</code-group>
+
+此示例将使项目支持两个语言（`'en'`, `'nl'`），并且会添加为 `'en'` 语言额外添加的消息。
+
+<code-group>
+
+```ts [project/i18n/locales/en.json]
+{
+  "title": "foo"
+}
+```
+
+```ts [project/my-layer/i18n/locales/en.json]
+{
+  "title": "layer title",
+  "description": "bar"
+}
+```
+
+</code-group>
+
+以上结果为：
+
+```jsonc
+{
+  // 较早的层拥有优先权
+  "title": "foo",
+  "description": "bar"
+}
+```
+
+## VueI18n 选项
+
+层内的 VueI18n 配置文件中定义的选项会合并，并根据其层级优先权相互覆盖。

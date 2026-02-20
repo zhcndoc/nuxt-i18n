@@ -1,0 +1,57 @@
+# 每组件翻译
+
+> 在组件中内联定义翻译信息。
+
+如果你想为每个页面或每个组件定义翻译，可以利用 i18n 自定义块。
+
+现在你可以在 Vue 文件中使用 i18n 自定义块定义翻译：
+
+```vue [page.vue]
+<script setup lang="ts">
+const { t } = useI18n({
+  useScope: 'local'
+})
+</script>
+
+<template>
+  <p>{{ t('hello') }}</p>
+</template>
+
+<i18n lang="json">
+{
+  "en": {
+    "hello": "hello world!"
+  },
+  "ja": {
+    "hello": "こんにちは、世界!"
+  }
+}
+</i18n>
+```
+
+或者使用 Yaml 语法：
+
+```vue [page.vue]
+<!-- 与上面相同的 script 和 template -->
+<i18n lang="yaml">
+en:
+  hello: 'hello world!'
+ja:
+  hello: 'こんにちは、世界!'
+</i18n>
+```
+
+<callout icon="i-heroicons-light-bulb">
+
+阅读更多关于 [i18n 自定义块](https://vue-i18n.intlify.dev/guide/advanced/sfc.html)
+
+</callout>
+
+<callout icon="i-heroicons-exclamation-triangle" color="warning">
+
+当你使用每组件翻译时，需要使用由 `useI18n()` 导出的 `t()` 方法，**而不是使用 $t()**。<br />
+
+
+关于不用于每组件翻译的 `$t()`，请参阅 Vue I18n 文档中["隐式注入属性和函数"部分](https://vue-i18n.intlify.dev/guide/advanced/composition.html#implicit-with-injected-properties-and-functions)。
+
+</callout>

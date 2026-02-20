@@ -1,0 +1,64 @@
+# 运行时钩子
+
+> Nuxt i18n 模块提供运行时钩子，您可以使用它们根据应用的语言执行特定任务。
+
+**Nuxt i18n 模块** 提供运行时钩子，用于根据应用的语言执行特定任务。
+
+## 钩子
+
+### `'i18n:beforeLocaleSwitch'`
+
+在应用语言切换之前调用，可以通过重写 `newLocale` 属性来改变要切换的语言。
+
+参数：
+
+- `oldLocale`
+  - 类型: `string`
+  - 切换前的应用语言
+- `newLocale`
+  - 类型: `string`
+  - 切换后的应用语言
+- `initialSetup`
+  - 类型: `string`
+  - 如果是应用加载时触发的初始语言切换，则设为 `true`。这是一个特殊情况，因为技术上语言尚未设置，所以是从无语言切换到某语言。
+- `context`
+  - 类型: `NuxtApp`
+  - Nuxt 应用，该属性已弃用，可在钩子外部通过 `const context = useNuxtApp()` 获取相同效果。
+
+返回值：`string | null`
+
+### `'i18n:localeSwitched'`
+
+在应用语言切换完成后立即调用。
+
+参数：
+
+- `oldLocale`
+  - 类型: `string`
+  - 切换前的应用语言
+- `newLocale`
+  - 类型: `string`
+  - 切换后的应用语言
+
+## 使用方法
+
+典型用法是在插件中定义这些回调，这样可以访问应用上下文（例如当语言变更时需要更改 Axios 配置时非常有用）。
+
+```ts [/plugins/i18n.ts]
+export default defineNuxtPlugin(nuxtApp => {
+  // 在设置新语言之前调用
+  nuxtApp.hook('i18n:beforeLocaleSwitch', (options) => {
+    console.log('onBeforeLanguageSwitch', options.oldLocale, options.newLocale, options.initialSetup)
+
+    // 你可以通过赋予不同值来覆盖新语言
+    if(options.newLocale === 'fr') {
+      options.newLocale = 'en'
+    }
+  })
+
+  // 在新语言设置完成后调用
+  nuxtApp.hook('i18n:localeSwitched', (options) => {
+    console.log('onLanguageSwitched', options.oldLocale, options.newLocale)
+  })
+})
+```

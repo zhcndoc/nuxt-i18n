@@ -1,0 +1,67 @@
+# 运行时配置
+
+> i18n 运行时配置选项。
+
+有些选项可以通过 `runtimeConfig` 设置，通过这种方式设置选项可以使得在构建后通过环境变量覆盖这些选项成为可能。
+
+## 用法
+
+如果你想使用环境变量来更改[支持的选项](#supported-options)，你需要把这些选项设置在 `runtimeConfig.public.i18n` 中。
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+    modules: ['@nuxtjs/i18n'],
+    i18n: {
+        // 保留想通过 `runtimeConfig` 设置的选项不设置
+        // baseUrl: 'https://example.com',
+    },
+    runtimeConfig: {
+        public: {
+            i18n: {
+                baseUrl: 'https://example.com',
+                domainLocales: {}
+                // 其他选项 ...
+            }
+        }
+    }
+})
+```
+
+你可以在[Nuxt 文档](https://nuxt.com/docs/guide/going-further/runtime-config#environment-variables)中了解更多关于其工作原理的内容。
+
+<callout type="warning">
+
+`runtimeConfig` 中仅支持[可序列化的值](https://nuxt.com/docs/guide/going-further/runtime-config#serialization)，通过这种方式设置的选项可能无法支持所有可用类型（例如函数），而默认配置通常支持这些类型。
+
+</callout>
+
+<callout type="info">
+
+如果你希望支持其他选项，可以提交一个 issue 来描述你的使用场景，或者自己发起 PR 来添加支持！
+
+</callout>
+
+## 支持的选项
+
+模块配置优先级更高，只有当选项未被设置时，才会使用通过 `runtimeConfig` 设置的值。
+
+以下选项可以通过 `runtimeConfig` 设置：
+
+### `baseUrl`
+
+- 键名: `NUXT_PUBLIC_I18N_BASE_URL`
+
+此运行时配置选项与模块选项中的 [`baseUrl`](/docs/api/options#baseUrl) 相同。
+
+<callout type="warning">
+
+注意：`baseUrl` 模块选项允许你设置函数，但由于限制，运行时配置中不支持函数设置。
+
+</callout>
+
+### `domainLocales`
+
+- 属性: `domainLocales[code].domain`
+- 键名: `NUXT_PUBLIC_I18N_DOMAIN_LOCALES_{code}_DOMAIN`
+
+此运行时配置选项允许覆盖 [`locales`](/docs/api/options#locales) 模块选项中设置的域名。

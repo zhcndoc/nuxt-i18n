@@ -1,0 +1,50 @@
+# Vue I18n 配置
+
+> 配置 Vue I18n 的运行时选项
+
+## Vue I18n 配置
+
+虽然一些选项在 Nuxt I18n 和 Vue I18n 之间是共享的，但也有一系列特定于 Vue I18n 的选项，例如：
+
+- `fallbackWarn`：用于控制回退警告。
+- `missingWarn`：用于控制缺失的本地化警告。
+- `formatter`：用于提供自定义消息格式化函数。
+- `numberFormats`：配置自定义数字格式化。
+- `datetimeFormats`：配置自定义日期时间格式化。
+- ... 更多！
+
+这些只是 Vue I18n 可用运行时选项中的一小部分示例，请查看 [Vue I18n 文档](https://vue-i18n.intlify.dev/) 以探索更多可用选项。
+
+Vue I18n 特有的选项无法在 `nuxt.config` 中配置，并且与 Nuxt I18n 使用或提供的功能没有重叠。
+
+## 添加 Vue I18n 配置文件
+
+要配置这些选项，可以在 `<rootDir>/i18n` 目录下创建一个 `i18n.config.ts` 文件，该文件应默认导出一个返回 Vue I18n 选项的函数。
+
+Nuxt I18n 提供了宏函数 `defineI18nConfig` 以增强类型支持，但直接使用普通函数也可以：
+
+```ts [i18n/i18n.config.ts]
+export default defineI18nConfig(() => {
+  return {
+    // vue-i18n 选项
+  }
+})
+```
+
+配置文件会从 `<rootDir>/i18n` 解析，自动查找并加载默认文件名为 `i18n.config` 的配置文件。此行为可以通过 `vueI18n` 选项进行配置。
+
+## 何时使用
+
+当你需要配置包含运行时函数或无法序列化以供构建时处理的数据的 Vue I18n 选项时，请使用 `i18n.config.ts`。这通常出现在：
+
+- 你需要基于用户输入或外部 API 动态加载或操作本地化数据。
+- 你使用自定义的格式化函数或其他不可序列化的选项。
+- 你需要使用 Nuxt I18n 构建时配置不支持的 Vue I18n 选项。
+
+## Nuxt 配置的优势
+
+虽然可以配置与 `i18n.config.ts` 中相同（或功能上相同）的选项（`messages` - 而不是 `locales`、`defaultLocale` 等），但建议尽可能将配置保留在 Nuxt I18n 在 `nuxt.config` 中的 `i18n` 键下。
+
+Nuxt I18n 会在构建阶段使用这些选项，并通过与例如 `@intlify/unplugin-vue-i18n` 等其他库集成，来配置和优化功能。
+
+Vue I18n 配置文件会在每个请求的运行时加载，这可能会增加服务器响应时间，尤其在高流量应用中更为明显。因为服务器需要为每个传入请求解析和处理配置，并将其与 Nuxt I18n 设置的配置合并，而不是在构建时只处理一次。

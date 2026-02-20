@@ -1,0 +1,88 @@
+# 服务端翻译
+
+> 在服务端进行翻译并作为响应返回。
+
+你可以在服务端进行翻译并作为响应返回。在 nuxt i18n 模块选项中定义的本地化消息被集成，因此你只需配置本地语言检测器。
+
+<callout icon="i-heroicons-exclamation-triangle" color="warning">
+
+**此功能是实验性质，** 自 v8 RC8 起支持。
+
+</callout>
+
+## 定义语言检测器
+
+要进行服务端翻译，你需要定义一个语言检测器。
+
+Nuxt i18n 导出了 `defineI18nLocaleDetector()` 组合函数用来定义语言检测器。
+
+以下是一个通过查询参数、Cookie 和请求头检测语言的示例：
+
+```ts [i18n/localeDetector.ts]
+// 基于查询参数、Cookie、请求头检测
+export default defineI18nLocaleDetector((event, config) => {
+  // 尝试从查询参数获取语言
+  const query = tryQueryLocale(event, { lang: '' }) // 通过 `lang` 选项禁用默认语言值
+  if (query) {
+    return query.toString()
+  }
+
+  // 尝试从 Cookie 获取语言
+  const cookie = tryCookieLocale(event, { lang: '', name: 'i18n_locale' }) // 通过 `lang` 选项禁用默认语言值
+  if (cookie) {
+    return cookie.toString()
+  }
+
+  // 尝试从请求头（accept-header）获取语言
+  const header = tryHeaderLocale(event, { lang: '' }) // 通过 `lang` 选项禁用默认语言值
+  if (header) {
+    return header.toString()
+  }
+
+  // 如果到此为止仍无法确定语言，则用传递给函数的语言配置的 `defaultLocale` 值作为语言
+  return config.defaultLocale
+})
+```
+
+语言检测器函数用于在服务端检测语言。它会在服务器上针对每个请求调用。
+
+定义语言检测器后，你需要将语言检测器的路径传递到 `experimental.localeDetector` 选项中。
+
+以下是一个直接在 Nuxt 应用中定义语言检测器配置的示例：
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  i18n: {
+    experimental: {
+      localeDetector: 'localeDetector.ts'
+    }
+  }
+})
+```
+
+有关由 `defineI18nLocaleDetector()` 定义的语言检测器函数的详细信息，请参见[这里](/docs/composables/define-i18n-locale-detector)。
+
+## 在 eventHandler 中使用 `useTranslation()`
+
+要在服务端进行翻译，你需要调用 `useTranslation()`。
+
+示例：
+
+```ts
+// 你需要定义一个 `async` 的事件处理程序
+export default defineEventHandler(async event => {
+  // 调用 `useTranslation`，它将返回翻译函数
+  const t = await useTranslation(event)
+  return {
+    // 调用翻译函数，传入本地化消息的键，
+    // 翻译函数支持多种重载形式
+    hello: t('hello')
+  }
+})
+```
+
+<callout icon="i-heroicons-light-bulb">
+
+对于翻译函数的键值，你可以指定在 nuxt.config 中 nuxt-i18n 选项里设置的本地化消息，或者定义在 i18n.config 消息中的语言文本。
+
+</callout>

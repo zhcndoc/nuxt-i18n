@@ -1,0 +1,25 @@
+# useLocalePath
+
+> useLocalePath() 组合函数返回一个根据当前语言环境解析路径的函数。
+
+`useLocalePath()` 组合函数返回一个根据当前语言环境解析路径的函数。
+
+## 类型
+
+```ts
+declare function useLocalePath(
+  options?: I18nCommonRoutingOptionsWithComposable
+): (route: RawLocation | RouteLocation, locale?: Locale) => string
+```
+
+## 用法
+
+```vue
+<script setup>
+const localePath = useLocalePath()
+</script>
+
+<template>
+  <NuxtLink :to="localePath('index')">{{ $t('home') }}</NuxtLink>
+</template>
+```
