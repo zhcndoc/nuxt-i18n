@@ -35,11 +35,6 @@ const links = computed<unknown[]>(() => [
     icon: 'i-heroicons-book-open',
     active: route.path.startsWith('/docs')
   },
-  {
-    label: '路线图',
-    to: '/roadmap',
-    icon: 'i-heroicons-map'
-  }
 ])
 </script>
 
