@@ -1,25 +1,25 @@
-import pkg from '../package.json'
+import pkg from "../package.json";
 
 export default defineNuxtConfig({
-  modules: ['@nuxt/ui', '@nuxt/content', '@nuxt/scripts', 'nuxt-og-image', 'nuxt-llms'],
+  extends: ["docus"],
+  modules: ["@nuxt/scripts", "nuxt-llms"],
   routeRules: {
     // default
-    '/': { prerender: true },
-    '/docs': { redirect: '/docs/getting-started' },
-    '/api/search.json': { prerender: true }
+    "/": { prerender: true },
+    "/docs": { redirect: "/docs/getting-started" },
   },
 
   // SEO
-  site: { url: 'https://nuxt-i18n.zhcndoc.com' },
+  site: { name: 'Nuxt I18n 中文文档', url: "https://nuxt-i18n.zhcndoc.com" },
 
-  ui: {
-    fonts: false
+  image: {
+    domains: ["raw.githubusercontent.com"],
   },
 
   nitro: {
     prerender: {
-      crawlLinks: true
-    }
+      crawlLinks: true,
+    },
   },
 
   runtimeConfig: {
@@ -28,53 +28,39 @@ export default defineNuxtConfig({
       scripts: {
         cloudflareWebAnalytics: {
           // NUXT_PUBLIC_SCRIPTS_CLOUDFLARE_WEB_ANALYTICS_TOKEN
-          token: ''
-        }
-      }
-    }
+          token: "",
+        },
+      },
+    },
   },
 
-  // Nuxt Content
-  content: {
-    build: {
-      markdown: {
-        highlight: {
-          langs: ['bash', 'js', 'ts', 'typescript', 'diff', 'vue', 'json', 'jsonc', 'yml', 'css', 'mdc']
-        }
-      }
-    }
-  },
   llms: {
-    domain: 'https://i18n.nuxtjs.org',
-    title: 'Nuxt i18n Docs',
-    description: 'Nuxt i18n is a powerful internationalization (i18n) module for Nuxt powered by Vue i18n.',
+    domain: "https://i18n.nuxtjs.org",
+    title: "Nuxt i18n Docs",
+    description:
+      "Nuxt i18n is a powerful internationalization (i18n) module for Nuxt powered by Vue i18n.",
     full: {
-      title: 'Nuxt i18n Docs',
-      description: 'The complete Nuxt i18n documentation written in Markdown (MDC syntax).'
-    }
+      title: "Nuxt i18n Docs",
+      description:
+        "The complete Nuxt i18n documentation written in Markdown (MDC syntax).",
+    },
   },
 
-  mdc: {
-    highlight: {
-      noApiRoute: false
-    }
-  },
-
-  css: ['~/assets/css/main.css'],
+  css: ["~/assets/css/main.css"],
 
   typescript: { strict: false },
 
   $development: {
     scripts: {
-      enabled: false
-    }
+      enabled: false,
+    },
   },
 
   scripts: {
     registry: {
-      cloudflareWebAnalytics: true
-    }
+      cloudflareWebAnalytics: true,
+    },
   },
 
-  compatibilityDate: '2024-09-26'
-})
+  compatibilityDate: "2024-09-26",
+});
