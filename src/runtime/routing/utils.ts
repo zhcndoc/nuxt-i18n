@@ -3,26 +3,28 @@ import { getLocalizedRouteName, normalizeRouteName } from '#i18n-kit/routing'
 
 import type { Locale } from 'vue-i18n'
 import type { RouteLocationPathRaw, RouteLocationResolvedGeneric, RouteRecordNameGeneric, Router } from 'vue-router'
+import type { PrefixableOptions } from '#i18n-kit/routing'
 
 /**
- * Returns a getter function which returns a localized route name for the given route and locale.
- * The returned function can vary based on the strategy and domain configuration.
+ * Returns a getter function which returns a localized route name for the given route and locale,
+ * resolved against the routes that were generated rather than from the strategy.
  */
 export function createLocaleRouteNameGetter(
-  defaultLocale: string,
+  hasRoute: (name: string) => boolean,
+  config: Pick<PrefixableOptions, 'routing' | 'domains'>,
 ): (name: RouteRecordNameGeneric | null, locale: string) => string {
   // no route localization
-  if (!__I18N_ROUTING__ && !__DIFFERENT_DOMAINS__) {
+  if (!config.routing && !config.domains) {
     return routeName => normalizeRouteName(routeName)
   }
 
-  // default locale routes have default suffix
-  if (__I18N_STRATEGY__ === 'prefix_and_default') {
-    return (name, locale) => getLocalizedRouteName(normalizeRouteName(name), locale, locale === defaultLocale)
+  return (name, locale) => {
+    const normalized = normalizeRouteName(name)
+    // which locales get an unprefixed `___default` variant is decided by the strategy at build
+    // time and pruned per host by `setupMultiDomainLocales`, so the route table is the authority
+    const suffixed = getLocalizedRouteName(normalized, locale, true)
+    return hasRoute(suffixed) ? suffixed : getLocalizedRouteName(normalized, locale, false)
   }
-
-  // routes are localized
-  return (name, locale) => getLocalizedRouteName(normalizeRouteName(name), locale, false)
 }
 
 /**
@@ -30,12 +32,13 @@ export function createLocaleRouteNameGetter(
  */
 export function createLocalizedRouteByPathResolver(
   router: Router,
+  config: PrefixableOptions,
 ): (route: RouteLocationPathRaw, locale: Locale) => RouteLocationPathRaw | RouteLocationResolvedGeneric {
-  if (!__I18N_ROUTING__) {
+  if (!config.routing) {
     return route => route
   }
 
-  if (__I18N_STRATEGY__ === 'prefix') {
+  if (config.strategy === 'prefix') {
     /**
      * The `router.resolve` function prints warnings when resolving non-existent paths and `router.hasRoute` only accepts named routes.
      * The path passed to `localePath` is not prefixed which will trigger vue-router warnings since all routes are prefixed.

@@ -6,7 +6,10 @@ import type { H3Event } from 'h3'
 
 export function useRuntimeI18n(nuxtApp?: NuxtApp, event?: H3Event) {
   if (!nuxtApp) {
-    return useRuntimeConfig(event).public.i18n as unknown as I18nPublicRuntimeConfig
+    // in nitro `useRuntimeConfig` accepts an event to apply env overrides, while the app-side
+    // signature accepts no arguments (https://github.com/nuxt/nuxt/pull/35376) - cast to support both
+    const getRuntimeConfig = useRuntimeConfig as (event?: H3Event) => ReturnType<typeof useRuntimeConfig>
+    return getRuntimeConfig(event).public.i18n as unknown as I18nPublicRuntimeConfig
   }
   return nuxtApp.$config.public.i18n as unknown as I18nPublicRuntimeConfig
 }
@@ -33,4 +36,23 @@ export function resolveRootRedirect(config: string | RootRedirectOptions | undef
 
 export function toArray<T>(value: T | T[]): T[] {
   return Array.isArray(value) ? value : [value]
+}
+
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '"': '&quot;',
+  '\'': '&#39;',
+  '<': '&lt;',
+  '>': '&gt;',
+}
+
+/**
+ * Escapes a value interpolated into raw HTML, same character set as vue's `escapeHtml`
+ * so a rewritten attribute is identical to what vue rendered for the same value.
+ *
+ * Vue exposes this through `ssrRenderAttr` from `vue/server-renderer`, but importing that
+ * would pull the server renderer into the client bundle.
+ */
+export function escapeHtmlAttr(value: string): string {
+  return value.replace(/["'&<>]/g, c => HTML_ESCAPES[c]!)
 }

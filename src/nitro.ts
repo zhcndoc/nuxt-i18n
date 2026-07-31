@@ -1,36 +1,56 @@
 import { resolveModuleExportNames } from 'mlly'
 import { defu } from 'defu'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { addServerHandler, addServerImports, addServerPlugin, addServerTemplate, resolveModule, resolvePath } from '@nuxt/kit'
 import yamlPlugin from '@rollup/plugin-yaml'
 import json5Plugin from '@miyaneee/rollup-plugin-json5'
 import { getDefineConfig } from './bundler'
+import { readStaticResource } from './resources'
+import { join, relative } from 'pathe'
 import { logger, toArray } from './utils'
 import { EXECUTABLE_EXTENSIONS } from './constants'
 
 import type { Nuxt } from '@nuxt/schema'
-import type { LocaleInfo } from './types'
-import type { I18nNuxtContext } from './context'
-import { generateLoaderOptions } from './gen'
+import type { FileMeta } from './types'
+import type { ResolvedI18nContext } from './context'
 import { generateTemplateNuxtI18nOptions } from './template'
 
-export async function setupNitro(ctx: I18nNuxtContext, nuxt: Nuxt) {
+export async function setupNitro(ctx: ResolvedI18nContext, nuxt: Nuxt) {
   addServerTemplate({
     filename: '#internal/i18n-options.mjs',
-    getContents: () => generateTemplateNuxtI18nOptions(ctx, generateLoaderOptions(ctx, nuxt), true),
+    getContents: () => generateTemplateNuxtI18nOptions(ctx, true),
   })
+
+  // resources with an `assetKey` ship as server assets read lazily at runtime (see
+  // `generateLoaderOptions`) - keeps message data out of the nitro bundle and its build memory
+  const assetFiles = new Map(ctx.localeFileMetas.filter(meta => meta.assetKey).map(meta => [meta.assetKey!, meta.path]))
+  if (assetFiles.size) {
+    const assetsDir = join(nuxt.options.buildDir, 'i18n-assets')
+    nuxt.hook('nitro:config', (nitroConfig) => {
+      nitroConfig.serverAssets ||= []
+      nitroConfig.serverAssets.push({ baseName: 'i18n', dir: assetsDir })
+    })
+    // written right before the nitro build - the build dir is cleaned after `modules:done`
+    nuxt.hook('nitro:build:before', () => {
+      rmSync(assetsDir, { recursive: true, force: true })
+      mkdirSync(assetsDir, { recursive: true })
+      for (const [assetKey, path] of assetFiles) {
+        writeFileSync(join(assetsDir, assetKey), readStaticResource(ctx, path))
+      }
+    })
+  }
 
   addServerTemplate({
     filename: '#internal/i18n-route-resources.mjs',
     getContents: () => nuxt.vfs['#build/i18n-route-resources.mjs'] || '',
   })
 
-  const localeDetectorPath = await resolveLocaleDetectorPath(ctx, nuxt)
+  const localeDetector = await resolveLocaleDetectorPath(ctx, nuxt)
   addServerTemplate({
     filename: '#internal/i18n-locale-detector.mjs',
     getContents: () =>
-      localeDetectorPath
-        ? `export { default as localeDetector } from ${JSON.stringify(localeDetectorPath)}`
+      localeDetector.exists
+        ? `export { default as localeDetector } from ${JSON.stringify(localeDetector.path)}`
         : `export const localeDetector = undefined`,
   })
 
@@ -57,13 +77,21 @@ export async function setupNitro(ctx: I18nNuxtContext, nuxt: Nuxt) {
 
   nuxt.hook('nitro:config', async (nitroConfig) => {
     // inline module runtime in Nitro bundle
-    nitroConfig.externals = defu(nitroConfig.externals ?? {}, { inline: [ctx.resolver.resolve('./runtime'), ...new Set(ctx.localeInfo.flatMap(x => x.meta.map(m => m.path)))] })
+    nitroConfig.externals = defu(nitroConfig.externals ?? {}, { inline: [ctx.resolver.resolve('./runtime'), ...ctx.localeFilePaths] })
     nitroConfig.alias!['#i18n'] = ctx.resolver.resolve('./runtime/composables/index-server')
+
+    // type the locale detector file in the server tsconfig, where `#i18n` resolves server composables
+    if (localeDetector.path) {
+      const relativeDetectorPath = relative(nuxt.options.buildDir, localeDetector.path)
+      nuxt.options.typescript.tsConfig.exclude ||= []
+      nuxt.options.typescript.tsConfig.exclude.push(relativeDetectorPath)
+      nitroConfig.typescript = defu(nitroConfig.typescript ?? {}, { tsConfig: { include: [relativeDetectorPath] } })
+    }
 
     nitroConfig.rollupConfig!.plugins = (await nitroConfig.rollupConfig!.plugins) || []
     nitroConfig.rollupConfig!.plugins = toArray(nitroConfig.rollupConfig!.plugins)
 
-    const localePathsByType = getResourcePathsGrouped(ctx.localeInfo)
+    const localePathsByType = getResourcePathsGrouped(ctx.localeFileMetas)
     // install server resource transform plugin for yaml / json5 format
     if (localePathsByType.yaml.length > 0) {
       nitroConfig.rollupConfig!.plugins.push(yamlPlugin({ include: localePathsByType.yaml }))
@@ -72,30 +100,29 @@ export async function setupNitro(ctx: I18nNuxtContext, nuxt: Nuxt) {
     if (localePathsByType.json5.length > 0) {
       nitroConfig.rollupConfig!.plugins.push(json5Plugin({ include: localePathsByType.json5 }))
     }
-
+    // the prerender pass builds its own nitro from this config, so this is the only place reaching
+    // it - but it runs before the preset is applied, so `staticDeploy` is stale here. Server code
+    // reads what derives from it (`__IS_SSG__`, `__I18N_CDN__`) from the app graph instead.
     nitroConfig.replace = Object.assign({}, nitroConfig.replace, getDefineConfig(ctx, true))
   })
 }
 
-async function resolveLocaleDetectorPath(ctx: I18nNuxtContext, nuxt: Nuxt) {
+async function resolveLocaleDetectorPath(ctx: ResolvedI18nContext, nuxt: Nuxt) {
   const detector = ctx.i18nLayers.find(l => !!l.i18nDetector)?.i18nDetector
-  if (detector == null) { return '' }
+  if (detector == null) { return { path: '', exists: false } }
 
   const resolved = await resolvePath(detector, { cwd: nuxt.options.rootDir, extensions: EXECUTABLE_EXTENSIONS })
   const exists = existsSync(resolved)
   if (!exists) {
     logger.warn(`localeDetector file '${resolved}' does not exist.`)
-    return ''
   }
 
-  return resolved
+  return { path: resolved, exists }
 }
 
-function getResourcePathsGrouped(localeInfo: LocaleInfo[]) {
-  const groups: { yaml: string[], json5: string[] } = { yaml: [], json5: [] }
-  for (const locale of localeInfo) {
-    groups.yaml = groups.yaml.concat(locale.meta.filter(meta => /\.ya?ml$/.test(meta.path)).map(x => x.path))
-    groups.json5 = groups.json5.concat(locale.meta.filter(meta => /\.json5?$/.test(meta.path)).map(x => x.path))
+function getResourcePathsGrouped(fileMetas: FileMeta[]) {
+  return {
+    yaml: fileMetas.filter(meta => /\.ya?ml$/.test(meta.path)).map(x => x.path),
+    json5: fileMetas.filter(meta => /\.json5?$/.test(meta.path)).map(x => x.path),
   }
-  return groups
 }

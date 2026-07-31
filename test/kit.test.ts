@@ -1,439 +1,483 @@
-import { describe, test, expect, vi } from 'vitest'
-import { type ComposableContext, isRouteLocationPathRaw, prefixable } from '../src/runtime/utils'
-import { createLocaleRouteNameGetter, createLocalizedRouteByPathResolver } from '../src/runtime/routing/utils'
-import { getRouteBaseName as _getRouteBaseName } from '#i18n-kit/routing'
-import { createMemoryHistory, createRouter, type RouteLocationRaw } from 'vue-router'
-import { type RouteRecordNameGeneric, type Router } from 'vue-router'
-import { type RouteLocationGenericPath } from '../src/runtime/types'
+import { describe, test, expect, vi, beforeAll } from 'vitest'
+import { createRoutingContext, type RoutingContext } from '../src/runtime/routing/context'
+import { createMemoryHistory, createRouter, type RouteLocationRaw, type Router } from 'vue-router'
 import {
   localePath as _localePath,
   switchLocalePath as _switchLocalePath,
-  localeRoute as _localeRoute,
-  type RouteLike,
-  type RouteLikeWithName,
-  type RouteLikeWithPath
+  localeRoute as _localeRoute
 } from '../src/runtime/routing/routing'
-import { withTrailingSlash, withoutTrailingSlash } from 'ufo'
-import { reactive, ref, unref } from 'vue'
+import { ref, unref } from 'vue'
 import { buildNuxt, loadNuxt } from '@nuxt/kit'
 import { resolve } from 'pathe'
 import { localizeRoutes } from '../src/routing'
-import { getNormalizedLocales } from './pages/utils'
+import { setupMultiDomainLocales } from '../src/runtime/routing/domain'
+import { createTestBaseUrls, getNormalizedLocales } from './pages/utils'
+import { resolveDefaultLocale } from '../src/runtime/shared/locales'
 import type { NuxtPage } from '@nuxt/schema'
 import type { Strategies } from '#internal-i18n-types'
 import { LocalizableRoute } from '../src/kit/gen'
 
-const routingOptions = reactive({
-  strategy: 'prefix_and_default' as Strategies,
+const DEFAULT_LOCALE = 'en'
+
+const routingOptions = {
   differentDomains: false,
   routesNameSeparator: '___',
   defaultLocaleRouteNameSuffix: 'default',
   trailingSlash: false,
-  defaultLocale: 'en',
+  defaultLocale: DEFAULT_LOCALE,
   defaultDirection: 'ltr' as const
-})
+}
 
 const i18nMock = {
   locale: ref('en'),
-  locales: ref([
+  locales: ref(getNormalizedLocales([
     { code: 'en', language: 'en-US' },
-    { code: 'nl', language: 'nl-NL ' }
-  ]),
+    { code: 'ja', language: 'ja-JP' }
+  ])),
   baseUrl: ref('http://localhost')
 }
 
-// more flexible implementation of `initComposableOptions` in src/runtime/utils.ts
-function initComposableOptions(router: Router): ComposableContext {
-  vi.stubGlobal('__I18N_STRATEGY__', routingOptions.strategy)
-  vi.stubGlobal('__I18N_ROUTING__', routingOptions.strategy !== 'no_prefix')
-
-  const getLocalizedRouteName = (name: RouteRecordNameGeneric | null, locale: string) =>
-    createLocaleRouteNameGetter(routingOptions.defaultLocale)(name, locale)
-  const { differentDomains, defaultLocale, trailingSlash, defaultDirection } = routingOptions
-
-  // const getDomainFromLocale = (locale: string) => undefined
-  const routeByPathResolver = (input: RouteLikeWithPath, locale: string) =>
-    createLocalizedRouteByPathResolver(router)(input, locale)
-
-  function getRouteBaseName(route: RouteRecordNameGeneric | RouteLocationGenericPath | null) {
-    return _getRouteBaseName(route)
-  }
-
-  function resolveLocalizedRouteByName(route: RouteLikeWithName, locale: string) {
-    // if name is falsy fallback to current route name
-    route.name ||= getRouteBaseName(router.currentRoute.value)
-
-    // route localization may be disabled, check if localized variant exists
-    const localizedName = getLocalizedRouteName(route.name, locale)
-    if (router.hasRoute(localizedName)) {
-      route.name = localizedName
-    }
-
-    return route
-  }
-
-  const formatTrailingSlash = trailingSlash ? withTrailingSlash : withoutTrailingSlash
-  function resolveLocalizedRouteByPath(input: RouteLikeWithPath, locale: string) {
-    const route = routeByPathResolver(input, locale) as RouteLike
-
-    const resolvedName = getRouteBaseName(route)
-    if (resolvedName) {
-      route.name = getLocalizedRouteName(resolvedName, locale)
-      return route
-    }
-
-    // if route has a path defined but no name, resolve full route using the path
-    if (!differentDomains && prefixable(locale, defaultLocale)) {
-      route.path = '/' + locale + route.path
-    }
-
-    route.path = formatTrailingSlash(route.path, true)
-    return route
-  }
-
-  return {
-    router,
-    routingOptions: {
-      ...routingOptions,
-      // defaultDirection: routingOptions.defaultDirection,
-      strictCanonicals: true,
-      hreflangLinks: true
-    },
-    getLocale: () => unref(i18nMock.locale),
-    getLocales: () => unref(i18nMock.locales),
-    getBaseUrl: () => unref(i18nMock.baseUrl),
-    getRouteBaseName,
-    getLocalizedDynamicParams: locale => {
-      // const params = (router.currentRoute.value.meta[DYNAMIC_PARAMS_KEY] ?? {}) as Partial<I18nRouteMeta>
-      // return params[locale]
-      return undefined
-    },
-    afterSwitchLocalePath: (path, locale) => {
-      // if (differentDomains) {
-      //   const domain = getDomainFromLocale(locale)
-      //   return (domain && joinURL(domain, path)) || path
-      // }
-      return path
-    },
-    resolveLocalizedRouteObject: (route, locale) => {
-      if (isRouteLocationPathRaw(route)) {
-        return resolveLocalizedRouteByPath(route, locale)
-      }
-
-      return resolveLocalizedRouteByName(route, locale)
-    }
-  }
-}
-
-// also updates i18nMock for now
+// load fixture pages once, shared across strategy suites (also updates i18nMock)
+let _pages: Promise<NuxtPage[]> | undefined
+const loadPages = () => (_pages ??= loadFixtureAndRoutes())
 async function loadFixtureAndRoutes() {
   const nuxt = await loadNuxt({
     rootDir: resolve(process.cwd(), './test/fixtures/kit'),
     configFile: 'nuxt.config',
-    dev: false,
-    overrides: {
-      experimental: {
-        // extraPageMetaExtractionKeys: ['i18n'],
-        // scanPageMeta: 'after-resolve'
-      }
-    }
+    dev: false
   })
   const locales = getNormalizedLocales(nuxt.options.i18n.locales)
   i18nMock.locale.value = locales[0].code
-  i18nMock.locales.value = locales.map(x => ({ code: x.code, language: x.language ?? x.code }))
+  // kept normalized - `localizeRoutes` and the routing context both read the domain fields
+  i18nMock.locales.value = locales.map(x => ({ ...x, language: x.language ?? x.code }))
   i18nMock.baseUrl.value = String(nuxt.options.i18n.baseUrl)
-  async function getPages() {
-    try {
-      return await new Promise(res => {
-        nuxt.hook('pages:resolved', pages => res(pages))
-        buildNuxt(nuxt)
-      })
-    } finally {
-      nuxt.close()
-    }
+  try {
+    return await new Promise<NuxtPage[]>(res => {
+      nuxt.hook('pages:resolved', pages => res(pages))
+      buildNuxt(nuxt)
+    })
+  } finally {
+    nuxt.close()
   }
-  return (await getPages()) as NuxtPage[]
 }
 
-function localizeRoutesWithStrategy(routes: NuxtPage[], strategy?: Strategies) {
-  if (strategy) {
-    routingOptions.strategy = strategy
-    globalThis['__I18N_STRATEGY__'] = strategy
+const STRATEGIES = ['prefix_and_default', 'prefix_except_default', 'prefix', 'no_prefix'] as const
+
+/**
+ * Expected path builder matching `prefixPath` in specs/routing/routing-tests.ts,
+ * extended to account for the default locale being unprefixed in the
+ * `prefix_except_default` and `prefix_and_default` strategies.
+ */
+function createPrefixPath(strategy: Strategies) {
+  return (path: string = '/', locale: string = DEFAULT_LOCALE) => {
+    const prefixed = strategy === 'prefix' || (strategy !== 'no_prefix' && locale !== DEFAULT_LOCALE)
+    if (!prefixed) {
+      return path.startsWith('/') ? path : '/' + path
+    }
+    return ['/', locale, path === '/' ? undefined : path].filter(Boolean).join('')
   }
-  return localizeRoutes(routes as LocalizableRoute[], { ...routingOptions, locales: unref(i18nMock.locales) })
 }
 
-describe('testing', () => {
-  test('switching locale path', async () => {
-    const routes = await loadFixtureAndRoutes()
-    const localized = localizeRoutesWithStrategy(routes, 'prefix_and_default')
-    const router = createRouter({ routes: localized as any, history: createMemoryHistory() })
-
-    const options = initComposableOptions(router)
-    await options.router.push('/')
-
-    const localePath = (route: RouteLocationRaw, locale?: string) => _localePath(options, route, locale)
-    const localeRoute = (route: RouteLocationRaw, locale?: string) => {
-      const val = _localeRoute(options, route, locale)
-      if (val) {
-        // @ts-expect-error wrong type
-        delete val.matched
-      }
-      return val
+/** Expected localized route name for the given strategy */
+function createRouteName(strategy: Strategies) {
+  return (base: string, locale: string = DEFAULT_LOCALE) => {
+    if (strategy === 'no_prefix') { return base }
+    if (strategy === 'prefix_and_default' && locale === DEFAULT_LOCALE) {
+      return `${base}___${locale}___default`
     }
-    const switchLocalePath = (locale: string) => _switchLocalePath(options, locale)
+    return `${base}___${locale}`
+  }
+}
 
-    expect(localePath('/')).toMatchInlineSnapshot(`"/"`)
-    expect(localePath('index', 'ja')).toMatchInlineSnapshot(`"/ja"`)
+describe.each(STRATEGIES)('routing context (strategy: %s)', strategy => {
+  const pp = createPrefixPath(strategy)
+  const rn = createRouteName(strategy)
+  let router: Router
+  let ctx: RoutingContext
 
-    // name
-    expect(localePath('about')).toMatchInlineSnapshot(`"/about"`)
+  beforeAll(async () => {
+    const pages = await loadPages()
+
+
+    const localized = localizeRoutes(pages as LocalizableRoute[], {
+      ...routingOptions,
+      strategy,
+      locales: unref(i18nMock.locales)
+    })
+    router = createRouter({ routes: localized as any, history: createMemoryHistory() })
+    ctx = createRoutingContext({
+      router,
+      defaultLocale: DEFAULT_LOCALE,
+      configuredDefaultLocale: DEFAULT_LOCALE,
+      strategy,
+      routing: strategy !== 'no_prefix',
+      domains: false,
+      trailingSlash: false,
+      strictSeo: false,
+      compactRoutes: false,
+      getLocale: () => unref(i18nMock.locale),
+      getLocales: () => unref(i18nMock.locales),
+      getBaseUrl: () => unref(i18nMock.baseUrl),
+      getCanonicalBaseUrl: () => unref(i18nMock.baseUrl),
+      getHost: () => 'localhost'
+    })
+  })
+
+  const localePath = (route: RouteLocationRaw, locale?: string) => _localePath(ctx, route, locale)
+  const localeRoute = (route: RouteLocationRaw, locale?: string) => _localeRoute(ctx, route, locale)
+  const switchLocalePath = (locale: string) => _switchLocalePath(ctx, locale)
+
+  test('localePath', async () => {
+    await router.push(pp('/'))
 
     // path
-    expect(localePath('/about', 'ja')).toMatchInlineSnapshot(`"/ja/about"`)
-    expect(localePath('pathMatch')).toMatchInlineSnapshot(`"/"`)
-    expect(localePath('pathMatch', 'ja')).toMatchInlineSnapshot(`"/ja"`)
+    expect(localePath('/')).toEqual(pp('/'))
+    expect(localePath('/about', 'ja')).toEqual(pp('/about', 'ja'))
+
+    // name
+    expect(localePath('index', 'ja')).toEqual(pp('/', 'ja'))
+    expect(localePath('about')).toEqual(pp('/about'))
+
+    // pathMatch
+    expect(localePath('pathMatch')).toEqual(pp('/'))
+    expect(localePath('pathMatch', 'ja')).toEqual(pp('', 'ja'))
 
     // object
-    expect(localePath({ name: 'about' }, 'ja')).toMatchInlineSnapshot(`"/ja/about"`)
+    expect(localePath({ name: 'about' }, 'ja')).toEqual(pp('/about', 'ja'))
 
     // omit name & path
-    expect(localePath({ state: { foo: 1 } })).toMatchInlineSnapshot(`"/"`)
+    expect(localePath({ state: { foo: 1 } })).toEqual(pp('/'))
 
     // preserve query parameters
-    expect(localePath({ query: { foo: 1 } })).toMatchInlineSnapshot(`"/?foo=1"`)
-    expect(localePath({ path: '/', query: { foo: 1 } })).toMatchInlineSnapshot(`"/?foo=1"`)
-    expect(localePath({ name: 'about', query: { foo: 1 } })).toMatchInlineSnapshot(`"/about?foo=1"`)
-    expect(localePath({ path: '/about', query: { foo: 1 } })).toMatchInlineSnapshot(`"/about?foo=1"`)
-    expect(localePath('/?foo=1')).toMatchInlineSnapshot(`"/?foo=1"`)
-    expect(localePath('/about?foo=1')).toMatchInlineSnapshot(`"/about?foo=1"`)
-    expect(localePath('/about?foo=1&test=2')).toMatchInlineSnapshot(`"/about?foo=1&test=2"`)
-    expect(localePath('/path/as a test?foo=bar sentence')).toMatchInlineSnapshot(`"/path/as a test?foo=bar+sentence"`)
-    expect(localePath('/path/as%20a%20test?foo=bar%20sentence')).toMatchInlineSnapshot(
-      `"/path/as a test?foo=bar+sentence"`
+    expect(localePath({ query: { foo: 1 } })).toEqual(pp('?foo=1'))
+    expect(localePath({ path: '/', query: { foo: 1 } })).toEqual(pp('?foo=1'))
+    expect(localePath({ name: 'about', query: { foo: 1 } })).toEqual(pp('/about?foo=1'))
+    expect(localePath({ path: '/about', query: { foo: 1 } })).toEqual(pp('/about?foo=1'))
+    expect(localePath('/?foo=1')).toEqual(pp('?foo=1'))
+    expect(localePath('/about?foo=1')).toEqual(pp('/about?foo=1'))
+    expect(localePath('/about?foo=1&test=2')).toEqual(pp('/about?foo=1&test=2'))
+    // params are re-encoded only when the path resolver matches a route record and re-resolves
+    // it by name; `prefix` (exact-path lookup misses param routes) and `no_prefix` (no path
+    // resolver) pass the raw path through
+    const encodesParams = strategy === 'prefix_and_default' || strategy === 'prefix_except_default'
+    expect(localePath('/path/as a test?foo=bar sentence')).toEqual(
+      pp(encodesParams ? '/path/as%20a%20test?foo=bar+sentence' : '/path/as a test?foo=bar+sentence')
     )
-    expect(localePath({ path: '/about', hash: '#foo=bar' })).toMatchInlineSnapshot(`"/about#foo=bar"`)
+    expect(localePath('/path/as%20a%20test?foo=bar%20sentence')).toEqual(pp('/path/as%20a%20test?foo=bar+sentence'))
+    // (#4098) escapes in a param survive resolution instead of decoding into delimiters
+    expect(localePath('/path/a%23b%3Fc%2Fd%25e')).toEqual(pp('/path/a%23b%3Fc%2Fd%25e'))
+    expect(localePath('/blog/my%20post%20%231')).toEqual(pp('/blog/my%20post%20%231'))
+
+    // preserve hash
+    expect(localePath({ path: '/about', hash: '#foo=bar' })).toEqual(pp('/about#foo=bar'))
 
     // undefined path
-    expect(localePath('/vue-i18n')).toMatchInlineSnapshot(`"/vue-i18n"`)
-
+    expect(localePath('/vue-i18n')).toEqual(pp('/vue-i18n'))
     // undefined name
-    expect(localePath('vue-i18n')).toMatchInlineSnapshot(`""`)
+    expect(localePath('vue-i18n')).toEqual('')
 
     // external
-    expect(localePath('https://github.com')).toMatchInlineSnapshot(`"https://github.com"`)
-    expect(localePath('mailto:example@mail.com')).toMatchInlineSnapshot(`"mailto:example@mail.com"`)
-    expect(localePath('tel:+31612345678')).toMatchInlineSnapshot(`"tel:+31612345678"`)
+    expect(localePath('https://github.com')).toEqual('https://github.com')
+    expect(localePath('mailto:example@mail.com')).toEqual('mailto:example@mail.com')
+    expect(localePath('tel:+31612345678')).toEqual('tel:+31612345678')
 
-    // locale route tests
-    expect(localeRoute('/')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/",
-        "hash": "",
-        "href": "/",
-        "meta": {},
-        "name": "index___en___default",
-        "params": {},
-        "path": "/",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('index', 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja",
-        "hash": "",
-        "href": "/ja",
-        "meta": {},
-        "name": "index___ja",
-        "params": {},
-        "path": "/ja",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('about')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/about",
-        "hash": "",
-        "href": "/about",
-        "meta": {},
-        "name": "about___en___default",
-        "params": {},
-        "path": "/about",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('/about', 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja/about",
-        "hash": "",
-        "href": "/ja/about",
-        "meta": {},
-        "name": "about___ja",
-        "params": {},
-        "path": "/ja/about",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('about', 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja/about",
-        "hash": "",
-        "href": "/ja/about",
-        "meta": {},
-        "name": "about___ja",
-        "params": {},
-        "path": "/ja/about",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute({ name: 'about' }, 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja/about",
-        "hash": "",
-        "href": "/ja/about",
-        "meta": {},
-        "name": "about___ja",
-        "params": {},
-        "path": "/ja/about",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('/:pathMatch(.*)*', 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja/:pathMatch(.*)*",
-        "hash": "",
-        "href": "/ja/:pathMatch(.*)*",
-        "meta": {},
-        "name": "pathMatch___ja",
-        "params": {
-          "pathMatch": [
-            ":pathMatch(.*)*",
-          ],
-        },
-        "path": "/ja/:pathMatch(.*)*",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('pathMatch')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/",
-        "hash": "",
-        "href": "/",
-        "meta": {},
-        "name": "pathMatch___en___default",
-        "params": {},
-        "path": "/",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('pathMatch', 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja",
-        "hash": "",
-        "href": "/ja",
-        "meta": {},
-        "name": "pathMatch___ja",
-        "params": {},
-        "path": "/ja",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('/vue-i18n', 'ja')).toMatchInlineSnapshot(
-      `
-      {
-        "fullPath": "/ja/vue-i18n",
-        "hash": "",
-        "href": "/ja/vue-i18n",
-        "meta": {},
-        "name": "pathMatch___ja",
-        "params": {
-          "pathMatch": [
-            "vue-i18n",
-          ],
-        },
-        "path": "/ja/vue-i18n",
-        "query": {},
-        "redirectedFrom": undefined,
-      }
-    `
-    )
-    expect(localeRoute('vue-i18n', 'ja')).toMatchInlineSnapshot(`undefined`)
+    // (#3840) localized route as parameter
+    // https://github.com/vuejs/router/blob/main/packages/router/CHANGELOG.md#414-2022-08-22
+    const warn = vi.spyOn(console, 'warn')
+    expect(localePath(router.currentRoute.value, 'ja')).toEqual(pp('/', 'ja'))
+    expect(localePath({ name: 'index___en' }, 'ja')).toEqual(pp('/', 'ja'))
+    expect(warn.mock.calls.find(call => String(call[0]).includes('Discarded invalid param(s)'))).toBeUndefined()
+    warn.mockRestore()
+  })
 
-    // switching to prefix strategy
-    const localizedPrefixed = localizeRoutesWithStrategy(routes, 'prefix')
-    // clear routes and add regenerated routes
-    router.clearRoutes()
-    for (const r of localizedPrefixed) {
-      router.addRoute(r as any)
-    }
-    await router.push('/en')
+  test('localeRoute', async () => {
+    await router.push(pp('/'))
 
-    expect(switchLocalePath('en')).toEqual('/en')
-    expect(switchLocalePath('ja')).toEqual('/ja')
-    expect(switchLocalePath('undefined')).toEqual('')
+    expect(localeRoute('/')).toMatchObject({
+      fullPath: pp('/'),
+      path: pp('/'),
+      name: rn('index'),
+      href: pp('/')
+    })
 
-    await router.push('/ja/about')
+    expect(localeRoute('index', 'ja')).toMatchObject({
+      fullPath: pp('/', 'ja'),
+      path: pp('/', 'ja'),
+      name: rn('index', 'ja'),
+      href: pp('/', 'ja')
+    })
 
-    expect(switchLocalePath('en')).toEqual('/en/about')
-    expect(switchLocalePath('ja')).toEqual('/ja/about')
+    expect(localeRoute('about')).toMatchObject({
+      fullPath: pp('/about'),
+      path: pp('/about'),
+      name: rn('about'),
+      href: pp('/about')
+    })
 
-    await router.push('/ja/about?foo=1&test=2')
-    expect(switchLocalePath('en')).toEqual('/en/about?foo=1&test=2')
-    expect(switchLocalePath('ja')).toEqual('/ja/about?foo=1&test=2')
+    expect(localeRoute('/about', 'ja')).toMatchObject({
+      fullPath: pp('/about', 'ja'),
+      path: pp('/about', 'ja'),
+      name: rn('about', 'ja'),
+      href: pp('/about', 'ja')
+    })
 
-    await router.push('/ja/about?foo=bär&four=四&foo=bar')
-    expect(switchLocalePath('ja')).toEqual('/ja/about?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
-    expect(switchLocalePath('en')).toEqual('/en/about?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
+    expect(localeRoute({ name: 'about' }, 'ja')).toMatchObject({
+      fullPath: pp('/about', 'ja'),
+      name: rn('about', 'ja')
+    })
 
-    await router.push('/ja/about?foo=bär&four=四')
-    expect(switchLocalePath('ja')).toEqual('/ja/about?foo=b%C3%A4r&four=%E5%9B%9B')
-    expect(switchLocalePath('en')).toEqual('/en/about?foo=b%C3%A4r&four=%E5%9B%9B')
+    // name
+    expect(localeRoute('pathMatch')).toMatchObject({
+      fullPath: pp('/'),
+      name: rn('pathMatch')
+    })
+    expect(localeRoute('pathMatch', 'ja')).toMatchObject({
+      fullPath: pp('', 'ja'),
+      name: rn('pathMatch', 'ja')
+    })
 
-    await router.push('/ja/about#foo=bar')
-    expect(switchLocalePath('ja')).toEqual('/ja/about#foo=bar')
-    expect(switchLocalePath('en')).toEqual('/en/about#foo=bar')
+    // undefined path
+    expect(localeRoute('/vue-i18n', 'ja')).toMatchObject({
+      fullPath: pp('/vue-i18n', 'ja'),
+      name: rn('pathMatch', 'ja'),
+      params: { pathMatch: ['vue-i18n'] }
+    })
 
-    await router.push('/ja/about?foo=é')
-    expect(switchLocalePath('ja')).toEqual('/ja/about?foo=%C3%A9')
+    // undefined name
+    expect(localeRoute('vue-i18n', 'ja')).toBeUndefined()
+  })
 
-    // TODO: figure out what was being tested originally
-    // await router.push('/ja/category/1');
-    // expect(switchLocalePath('ja')).toEqual('/ja/category/japanese');
-    // expect(switchLocalePath('en')).toEqual('/en/category/english');
+  test('switchLocalePath', async () => {
+    await router.push(pp('/'))
+    expect(switchLocalePath('en')).toEqual(pp('/', 'en'))
+    expect(switchLocalePath('ja')).toEqual(pp('/', 'ja'))
+    // resolving an unsupported locale fails and returns an empty path,
+    // except in `no_prefix` where route names and paths are not localized
+    expect(switchLocalePath('undefined')).toEqual(strategy === 'no_prefix' ? pp('/') : '')
 
-    await router.push('/ja/count/三')
-    expect(switchLocalePath('ja')).toEqual('/ja/count/三')
-    expect(switchLocalePath('en')).toEqual('/en/count/三')
+    await router.push(pp('/about', 'ja'))
+    expect(switchLocalePath('en')).toEqual(pp('/about', 'en'))
+    expect(switchLocalePath('ja')).toEqual(pp('/about', 'ja'))
 
-    await router.push('/ja/count/三?foo=bär&four=四&foo=bar')
-    expect(switchLocalePath('ja')).toEqual('/ja/count/三?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
-    expect(switchLocalePath('en')).toEqual('/en/count/三?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
+    // preserve query parameters
+    await router.push(pp('/about', 'ja') + '?foo=1&test=2')
+    expect(switchLocalePath('en')).toEqual(pp('/about', 'en') + '?foo=1&test=2')
+    expect(switchLocalePath('ja')).toEqual(pp('/about', 'ja') + '?foo=1&test=2')
+
+    await router.push(pp('/about', 'ja') + '?foo=bär&four=四&foo=bar')
+    expect(switchLocalePath('en')).toEqual(pp('/about', 'en') + '?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
+    expect(switchLocalePath('ja')).toEqual(pp('/about', 'ja') + '?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
+
+    await router.push(pp('/about', 'ja') + '?foo=é')
+    expect(switchLocalePath('ja')).toEqual(pp('/about', 'ja') + '?foo=%C3%A9')
+
+    // preserve hash
+    await router.push(pp('/about', 'ja') + '#foo=bar')
+    expect(switchLocalePath('en')).toEqual(pp('/about', 'en') + '#foo=bar')
+    expect(switchLocalePath('ja')).toEqual(pp('/about', 'ja') + '#foo=bar')
+
+    // encode unicode dynamic params
+    await router.push(pp('/count/三', 'ja'))
+    expect(switchLocalePath('en')).toEqual(pp('/count/%E4%B8%89', 'en'))
+    expect(switchLocalePath('ja')).toEqual(pp('/count/%E4%B8%89', 'ja'))
+
+    await router.push(pp('/count/三', 'ja') + '?foo=bär&four=四&foo=bar')
+    expect(switchLocalePath('en')).toEqual(pp('/count/%E4%B8%89', 'en') + '?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
+    expect(switchLocalePath('ja')).toEqual(pp('/count/%E4%B8%89', 'ja') + '?foo=b%C3%A4r&foo=bar&four=%E5%9B%9B')
+
+    // (#2909) reserved characters stay in the param instead of becoming a hash
+    await router.push(pp('/count/my-blog-post%23number1', 'ja'))
+    expect(switchLocalePath('en')).toEqual(pp('/count/my-blog-post%23number1', 'en'))
+    expect(switchLocalePath('ja')).toEqual(pp('/count/my-blog-post%23number1', 'ja'))
+
+    // (#4079) params keep their own escapes - `%23` is literal text here, not a `#`
+    await router.push(pp('/count/C%2523', 'ja'))
+    expect(switchLocalePath('en')).toEqual(pp('/count/C%2523', 'en'))
+    expect(switchLocalePath('ja')).toEqual(pp('/count/C%2523', 'ja'))
+
+    // (#4079) static non-ASCII segments are encoded into the route record at build time
+    await router.push(pp('/%E7%B4%84', 'ja'))
+    expect(switchLocalePath('en')).toEqual(pp('/%E7%B4%84', 'en'))
+    expect(switchLocalePath('ja')).toEqual(pp('/%E7%B4%84', 'ja'))
+  })
+})
+
+describe('switchLocalePath with differentDomains', () => {
+  const DOMAIN_LOCALES = getNormalizedLocales([
+    { code: 'en', language: 'en', domain: 'en.example.com', defaultForDomains: ['en.example.com'] },
+    { code: 'no', language: 'no', domain: 'en.example.com' },
+    { code: 'fr', language: 'fr', domain: 'fr.example.com', defaultForDomains: ['fr.example.com'] }
+  ])
+
+  function createDomainContext(opts: {
+    strategy: Strategies
+    host: string
+    locale: string
+    locales?: typeof DOMAIN_LOCALES
+    /** configured `defaultLocale`, the host's own default takes precedence over it */
+    defaultLocale?: string
+  }) {
+    const locales = opts.locales ?? DOMAIN_LOCALES
+    const localized = localizeRoutes([{ path: '/about', name: 'about' }] as LocalizableRoute[], {
+      ...routingOptions,
+      strategy: opts.strategy,
+      defaultLocale: opts.defaultLocale ?? '',
+      differentDomains: true,
+      locales
+    })
+    const router = createRouter({ routes: localized as any, history: createMemoryHistory() })
+    // resolved the way the runtime does, rather than supplied, so the test cannot drift from it
+    const hostDefault = resolveDefaultLocale(opts.host, opts.defaultLocale, locales)
+    setupMultiDomainLocales(hostDefault, opts.strategy, router)
+
+    const ctx = createRoutingContext({
+      router,
+      defaultLocale: hostDefault,
+      configuredDefaultLocale: opts.defaultLocale ?? '',
+      strategy: opts.strategy,
+      routing: true,
+      domains: true,
+      trailingSlash: false,
+      strictSeo: false,
+      compactRoutes: false,
+      getLocale: () => opts.locale,
+      getLocales: () => locales,
+      ...createTestBaseUrls({ locales, host: opts.host, protocol: 'http:', defaultLocale: opts.defaultLocale }),
+      getHost: () => opts.host
+    })
+    return { router, ctx }
+  }
+
+  test('cross-domain links use the target domain shape', async () => {
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_except_default',
+      host: 'fr.example.com',
+      locale: 'fr',
+      defaultLocale: 'fr'
+    })
+
+    await router.push('/about')
+    // off-host targets get absolute URLs in the target domain's shape
+    expect(_switchLocalePath(ctx, 'en')).toBe('http://en.example.com/about')
+    expect(_switchLocalePath(ctx, 'no')).toBe('http://en.example.com/no/about')
+    // on-host targets navigate relative
+    expect(_switchLocalePath(ctx, 'fr')).toBe('/about')
+  })
+
+  test('`strategy: prefix_and_default` falls back to unprefixing when no locale is a domain default', async () => {
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_and_default',
+      host: 'en.example.com',
+      locale: 'en',
+      defaultLocale: 'en',
+      locales: getNormalizedLocales([
+        { code: 'en', language: 'en', domain: 'en.example.com' },
+        { code: 'fr', language: 'fr', domain: 'fr.example.com' }
+      ])
+    })
+
+    // no `___default` variants exist to keep, so the host default is unprefixed instead
+    const paths = Object.fromEntries(router.getRoutes().map(x => [x.name, x.path]))
+    expect(paths['about___en']).toBe('/about')
+    expect(paths['about___en___default']).toBeUndefined()
+
+    await router.push('/about')
+    expect(_localePath(ctx, '/about', 'en')).toBe('/about')
+    expect(_switchLocalePath(ctx, 'en')).toBe('/about')
+  })
+
+  test('a host matching no configured domain links each locale to its own domain', async () => {
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_except_default',
+      host: 'staging.example.com',
+      locale: 'fr'
+    })
+
+    await router.push('/fr/about')
+    // no locale is served on this host, so every link is absolute in the target domain's shape
+    // and stays consistent with the hreflang alternates, which are always absolute per locale
+    expect(_switchLocalePath(ctx, 'en')).toBe('http://en.example.com/about')
+    expect(_switchLocalePath(ctx, 'no')).toBe('http://en.example.com/no/about')
+    expect(_switchLocalePath(ctx, 'fr')).toBe('http://fr.example.com/about')
+  })
+
+  test('`strategy: prefix_and_default` serves the host default unprefixed and prefixed', async () => {
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_and_default',
+      host: 'fr.example.com',
+      locale: 'fr',
+      defaultLocale: 'fr'
+    })
+
+    const paths = Object.fromEntries(router.getRoutes().map(x => [x.name, x.path]))
+    // the host default keeps both variants, route names for it resolve to the `___default` form
+    expect(paths['about___fr___default']).toBe('/about')
+    expect(paths['about___fr']).toBe('/fr/about')
+    // the other domains' unprefixed variants are removed
+    expect(paths['about___en___default']).toBeUndefined()
+    expect(paths['about___en']).toBe('/en/about')
+
+    await router.push('/about')
+    expect(_localePath(ctx, '/about', 'fr')).toBe('/about')
+    expect(_switchLocalePath(ctx, 'fr')).toBe('/about')
+    expect(_switchLocalePath(ctx, 'en')).toBe('http://en.example.com/about')
+  })
+
+  test('a locale the page is unavailable in produces no link', async () => {
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_except_default',
+      host: 'fr.example.com',
+      locale: 'fr',
+      defaultLocale: 'fr'
+    })
+
+    await router.push('/about')
+    // the route does not resolve, joining an empty path would link to the target domain's home page
+    expect(_switchLocalePath(ctx, 'xx')).toBe('')
+  })
+
+  test('`strategy: prefix` keeps prefixes in links for all locales', async () => {
+    const { router, ctx } = createDomainContext({ strategy: 'prefix', host: 'fr.example.com', locale: 'fr' })
+
+    await router.push('/fr/about')
+    expect(_switchLocalePath(ctx, 'en')).toBe('http://en.example.com/en/about')
+    expect(_switchLocalePath(ctx, 'no')).toBe('http://en.example.com/no/about')
+    expect(_switchLocalePath(ctx, 'fr')).toBe('/fr/about')
+  })
+
+  test('on-host targets link relative, unprefixed for the host default locale', async () => {
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_except_default',
+      host: 'en.example.com',
+      locale: 'no'
+    })
+
+    await router.push('/no/about')
+    expect(_switchLocalePath(ctx, 'en')).toBe('/about')
+    expect(_switchLocalePath(ctx, 'no')).toBe('/no/about')
+    expect(_switchLocalePath(ctx, 'fr')).toBe('http://fr.example.com/about')
+  })
+
+  test('multi-domain locales on the current host all link relative', async () => {
+    const domains = ['a.example.com', 'b.example.com']
+    const locales = [
+      { code: 'en', language: 'en', domains, defaultForDomains: ['a.example.com'] },
+      { code: 'no', language: 'no', domains, defaultForDomains: [] },
+      { code: 'fr', language: 'fr', domains, defaultForDomains: ['b.example.com'] }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any as typeof DOMAIN_LOCALES
+    const { router, ctx } = createDomainContext({
+      strategy: 'prefix_except_default',
+      host: 'a.example.com',
+      locale: 'en',
+      locales,
+      defaultLocale: 'en'
+    })
+
+    await router.push('/about')
+    expect(_switchLocalePath(ctx, 'en')).toBe('/about')
+    expect(_switchLocalePath(ctx, 'no')).toBe('/no/about')
+    // domain defaults of other hosts stay reachable through their prefixed paths
+    expect(_switchLocalePath(ctx, 'fr')).toBe('/fr/about')
   })
 })

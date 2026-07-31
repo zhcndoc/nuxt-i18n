@@ -76,6 +76,41 @@ test('detection locale with x-forwarded-host on server', async () => {
   expect(await dom.locator('#home-header').textContent()).toEqual('Accueil')
 })
 
+test('cookie locale is applied for locales on the current host', async () => {
+  const res = await undiciRequest('/', {
+    headers: { Host: 'nuxt-app.localhost', Cookie: 'i18n_redirected=no' }
+  })
+
+  expect(res.statusCode).toBe(302)
+  expect(res.headers.location).toEqual('http://nuxt-app.localhost/no')
+})
+
+test('a detected locale served on another domain redirects there in one hop', async () => {
+  const res = await undiciRequest('/', {
+    headers: { 'Host': 'nuxt-app.localhost', 'Accept-Language': 'fr' }
+  })
+
+  expect(res.statusCode).toBe(302)
+  // `fr` is the default of its own domain, the path is shaped for that domain
+  expect(res.headers.location).toEqual('http://fr.nuxt-app.localhost')
+})
+
+test('an arrival from a configured domain is an explicit choice and stays', async () => {
+  const res = await undiciRequest('/', {
+    headers: { 'Host': 'nuxt-app.localhost', 'Accept-Language': 'fr', 'Referer': 'http://fr.nuxt-app.localhost/' }
+  })
+
+  expect(res.statusCode).toBe(200)
+})
+
+test('a cookie locale is not followed off-host without a `cookieDomain` spanning the domains', async () => {
+  const res = await undiciRequest('/', {
+    headers: { Host: 'nuxt-app.localhost', Cookie: 'i18n_redirected=fr' }
+  })
+
+  expect(res.statusCode).toBe(200)
+})
+
 test('pass `<NuxtLink> to props', async () => {
   const res = await undiciRequest('/', {
     headers: {
@@ -89,7 +124,18 @@ test('pass `<NuxtLink> to props', async () => {
   expect(await dom.locator('#switch-locale-path-usages .switch-to-no a').getAttribute('href')).toEqual(
     `http://nuxt-app.localhost/no`
   )
-  expect(await dom.locator('#switch-locale-path-usages .switch-to-fr a').getAttribute('href')).toEqual(
-    `http://fr.nuxt-app.localhost`
-  )
+  // `fr` is served on the current host and links relative
+  expect(await dom.locator('#switch-locale-path-usages .switch-to-fr a').getAttribute('href')).toEqual('/')
+})
+
+test('`x-default` annotates the cluster, so every domain agrees on it', async () => {
+  const hrefs: string[] = []
+  for (const host of ['nuxt-app.localhost', 'fr.nuxt-app.localhost', 'ja.nuxt-app.localhost']) {
+    const res = await undiciRequest('/', { headers: { Host: host } })
+    const dom = await getDom(await res.body.text())
+    hrefs.push((await dom.locator('link[hreflang="x-default"]')?.getAttribute('href')) as string)
+  }
+
+  expect(new Set(hrefs).size).toBe(1)
+  expect(hrefs[0]).toBeTruthy()
 })

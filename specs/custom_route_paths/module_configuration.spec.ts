@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest'
 import { fileURLToPath } from 'node:url'
-import { setup, url } from '../utils'
-import { renderPage } from '../helper'
+import { $fetch, setup, url } from '../utils'
+import { getDom, renderPage } from '../helper'
 
 await setup({
   rootDir: fileURLToPath(new URL(`../fixtures/basic`, import.meta.url)),
@@ -24,7 +24,8 @@ await setup({
           en: '/news'
         },
         'blog/article': {
-          en: '/news/article'
+          en: '/news/article',
+          fr: '/actualités/article'
         }
       },
       detectBrowserLanguage: false
@@ -40,7 +41,7 @@ test('can access to custom route path', async () => {
   await page.waitForURL(url('/fr'))
 
   // page path
-  expect(JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({
+  await expect.poll(async () => JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({
     aboutPath: '/fr/about-fr'
   })
 
@@ -48,8 +49,8 @@ test('can access to custom route path', async () => {
   await page.locator('#link-about').clickNavigate()
   await page.waitForURL(url('/fr/about-fr'))
 
-  expect(await page.locator('#about-header').innerText()).toEqual('À propos')
-  expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
+  await expect.poll(() => page.locator('#about-header').innerText()).toEqual('À propos')
+  await expect.poll(() => page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
   await page.waitForURL(url('/fr/about-fr'))
 })
 
@@ -65,6 +66,21 @@ test('can access to custom nested route path', async () => {
   await page.waitForURL(url('/news/article'))
 })
 
+test('(#4079) non-ASCII custom route path is not double-encoded', async () => {
+  // the route record is encoded at build time, so the resolved path is already link-safe
+  const encoded = '/fr/actualit%C3%A9s/article'
+
+  const html = await $fetch('/news/article')
+  expect(html).toContain(`href="${encoded}"`)
+
+  const dom = await getDom(html)
+  expect(await dom.locator('#switch-locale-path-link-fr')?.getAttribute('href')).toEqual(encoded)
+
+  const { page } = await renderPage('/news/article')
+  await page.locator('#switch-locale-path-link-fr').clickNavigate()
+  await expect.poll(() => page.locator('#locale-properties-code').innerText()).toEqual('fr')
+})
+
 test('can not access to pick route path', async () => {
   const { page } = await renderPage('/')
 
@@ -73,7 +89,7 @@ test('can not access to pick route path', async () => {
   await page.waitForURL(url('/fr'))
 
   // disable href with <NuxtLink>
-  expect(await page.locator('#link-history').getAttribute('href')).toBe(null)
+  await expect.poll(() => page.locator('#link-history').getAttribute('href')).toBe(null)
 
   // disable direct url access
   let res: Awaited<ReturnType<typeof page.goto>> | (Error & { status: () => number }) | null = null
@@ -94,7 +110,7 @@ test('can not access to disable route path', async () => {
   await page.waitForURL(url('/fr'))
 
   // disable href with <NuxtLink>
-  expect(await page.locator('#link-category').getAttribute('href')).toBe(null)
+  await expect.poll(() => page.locator('#link-category').getAttribute('href')).toBe(null)
 
   // disable direct url access
   let res: Awaited<ReturnType<typeof page.goto>> | (Error & { status: () => number }) | null = null

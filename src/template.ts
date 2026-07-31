@@ -1,7 +1,8 @@
 import { useNuxt } from '@nuxt/kit'
+import { STUB_LOADER } from './gen'
 import type { generateLoaderOptions } from './gen'
 import { genArrayFromRaw, genObjectFromRaw, genObjectFromValues, genString } from 'knitwork'
-import type { I18nNuxtContext } from './context'
+import type { ResolvedI18nContext } from './context'
 
 type TemplateNuxtI18nOptions = ReturnType<typeof generateLoaderOptions>
 
@@ -19,7 +20,7 @@ function genLocaleLoaderHMR(localeLoaders: TemplateNuxtI18nOptions['localeLoader
       const loader = localeLoaders[locale]![i]!
       statements.push(
         [
-          `  import.meta.hot.accept("${loader.relative}", async mod => {`,
+          `  import.meta.hot.accept("${loader.virtualId}", async mod => {`,
           //   replace locale loader
           `    localeLoaders["${locale}"][${i}].load = () => Promise.resolve(mod.default)`,
           //   trigger locale messages reload for locale
@@ -39,7 +40,7 @@ function genVueI18nConfigHMR(configs: TemplateNuxtI18nOptions['vueI18nConfigs'])
   for (let i = 0; i < configs.length; i++) {
     statements.push(
       [
-        `  import.meta.hot.accept("${configs[i]!.relative}", async mod => {`,
+        `  import.meta.hot.accept("${configs[i]!.virtualId}", async mod => {`,
         //   load configs before replacing loader
         `    const [oldData, newData] = await Promise.all([loadCfg(vueI18nConfigs[${i}]), loadCfg(() => Promise.resolve(mod))]);`,
         //   replace config loader
@@ -59,11 +60,11 @@ function genVueI18nConfigHMR(configs: TemplateNuxtI18nOptions['vueI18nConfigs'])
 }
 
 export function generateTemplateNuxtI18nOptions(
-  ctx: I18nNuxtContext,
-  opts: TemplateNuxtI18nOptions,
+  ctx: ResolvedI18nContext,
   server: boolean = false,
   nuxt = useNuxt(),
 ): string {
+  const opts = ctx.loaderOptions
   const codeHMR
     = nuxt.options.dev
       && ctx.options.hmr
@@ -75,9 +76,22 @@ export function generateTemplateNuxtI18nOptions(
         '}',
       ].join('\n\n')
 
+  // mirrors `createRuntimeLoaderPredicate`, stubbing the loaders it will not reach so the locale
+  // files stay out of that graph - `import.meta.client` folds per graph, so the client and SSR
+  // halves of this shared template can differ
+  const appLoad = (load: string, locale: string) => {
+    if (server || nuxt.options.dev || !nuxt.options.ssr) { return load }
+    // the endpoint has no response for these, so both graphs load the locale themselves
+    if (ctx.undeliverableLocales.includes(locale)) { return load }
+    // static locales are served by the endpoint in both graphs, including while prerendering
+    if (!ctx.dynamicLocales.includes(locale)) { return STUB_LOADER }
+    // a static host has no endpoint left to fetch from, so there the client keeps its chunks too
+    return ctx.staticDeploy ? load : `import.meta.client ? ${STUB_LOADER} : ${load}`
+  }
+
   const localeLoaderEntries: Record<string, { key: string, load: string, cache: boolean }[]> = {}
   for (const locale in opts.localeLoaders) {
-    localeLoaderEntries[locale] = opts.localeLoaders[locale]!.map(({ key, load, loadServer, cache }) => ({ key, load: server ? loadServer : load, cache }))
+    localeLoaderEntries[locale] = opts.localeLoaders[locale]!.map(({ key, load, loadServer, cache }) => ({ key, load: server ? loadServer : appLoad(load, locale), cache }))
   }
 
   return `// @ts-nocheck

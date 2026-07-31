@@ -1,25 +1,72 @@
 import { createResolver } from '@nuxt/kit'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'pathe'
+import { assign, isString } from '@intlify/shared'
+import { applyLayerOptions, resolveLayerVueI18nConfigInfo } from './layers'
+import { computeLocaleHashes, filterLocales, getLayerI18n, normalizeDomainLocale, resolveLocales, validateDefaultLocale, validateLocaleCodes, withImplicitDomainDefaults } from './utils'
+import { resolveRawResourcePaths } from './resources'
+import { generateLoaderOptions } from './gen'
+// takes its facts as config and reads no `__FLAG__` defines, so the build can share it
+import { createPrerenderablePredicate } from './runtime/shared/delivery'
+
 import type { Resolver } from '@nuxt/kit'
-import type { FileMeta, LocaleInfo, LocaleObject, NuxtI18nOptions } from './types'
+import type { FileMeta, LocaleInfo, NormalizedLocaleObject, NuxtI18nOptions } from './types'
 import type { Nuxt, NuxtConfigLayer } from '@nuxt/schema'
-import { getLayerI18n } from './utils'
 
 export interface I18nNuxtContext {
   resolver: Resolver
-  userOptions: NuxtI18nOptions
   options: Required<NuxtI18nOptions>
-  normalizedLocales: LocaleObject<string>[]
-  localeCodes: string[]
-  localeInfo: LocaleInfo[]
-  vueI18nConfigPaths: Omit<FileMeta, 'cache'>[]
+  /** `nuxt.options.i18n` unmerged with defaults, to detect explicitly set options */
+  rawOptions: Partial<NuxtI18nOptions>
   distDir: string
   runtimeDir: string
-  fullStatic: boolean
-  localeHashes: Record<string, string>
   i18nLayers: LayerWithI18n[]
 }
+
+/**
+ * Locale-derived context, resolved in `modules:done` once all modules have registered locales.
+ */
+export interface ResolvedI18nContext extends I18nNuxtContext {
+  normalizedLocales: NormalizedLocaleObject<string>[]
+  localeCodes: string[]
+  localeInfo: LocaleInfo[]
+  /** flattened `localeInfo` file metas */
+  localeFileMetas: FileMeta[]
+  /** unique resolved locale file paths */
+  localeFilePaths: string[]
+  /** locale file paths served as raw messages instead of being handed to the bundler */
+  rawResourcePaths: Set<string>
+  vueI18nConfigPaths: Omit<FileMeta, 'cache'>[]
+  localeHashes: Record<string, string>
+  /** Locales whose messages can only be produced by running their loaders */
+  dynamicLocales: string[]
+  /** Locales the messages endpoint has no response for - see `DeliveryConfig.undeliverable` */
+  undeliverableLocales: string[]
+  /**
+   * Whether the build is deployed without a server. Only accurate once `nitro:init` has run:
+   * `nuxi generate` sets `nuxt.options.nitro.static`, a static preset (`github-pages`, ...) does not.
+   */
+  staticDeploy: boolean
+  loaderOptions: ReturnType<typeof generateLoaderOptions>
+}
+
+/** A file the build cannot resolve to fixed content - its loader has to run at runtime */
+const isDynamicMeta = (meta: FileMeta) => meta.type !== 'static' && meta.cache === false
+
+export function resolveDeliveryLocales(localeInfo: LocaleInfo[]) {
+  return {
+    dynamicLocales: localeInfo.filter(x => x.meta.some(isDynamicMeta)).map(x => x.code),
+    // one list, because nothing downstream cares which of the two reasons applies
+    undeliverableLocales: localeInfo.filter(x => x.meta.some(m => !m.serializable || m.appContext)).map(x => x.code),
+  }
+}
+
+/** Shares its rule with the runtime `isPrerenderable` rather than restating it - they must agree */
+export const prerenderableLocales = (ctx: ResolvedI18nContext) =>
+  ctx.localeCodes.filter(createPrerenderablePredicate({
+    dynamic: ctx.dynamicLocales,
+    undeliverable: ctx.undeliverableLocales,
+  }))
 
 type LayerWithI18n = { config: NuxtConfigLayer, i18n: Partial<NuxtI18nOptions>, i18nDir: string, i18nDetector?: string }
 const resolver = createResolver(import.meta.url)
@@ -28,6 +75,8 @@ const runtimeDir = fileURLToPath(new URL('./runtime', import.meta.url))
 
 export function createContext(userOptions: NuxtI18nOptions, nuxt: Nuxt): I18nNuxtContext {
   const options = userOptions as Required<NuxtI18nOptions>
+  // the `i18n` key may be configured with a falsy non-object value (#3900)
+  const rawOptions = (nuxt.options.i18n || {}) as Partial<NuxtI18nOptions>
 
   const i18nLayers: LayerWithI18n[] = []
   for (const l of nuxt.options._layers) {
@@ -38,18 +87,64 @@ export function createContext(userOptions: NuxtI18nOptions, nuxt: Nuxt): I18nNux
     i18nLayers.push({ config: l, i18n, i18nDir, i18nDetector })
   }
 
-  return {
-    options,
-    resolver,
-    userOptions,
-    distDir,
-    runtimeDir,
-    i18nLayers,
-    localeInfo: undefined!,
-    localeCodes: undefined!,
-    normalizedLocales: undefined!,
-    vueI18nConfigPaths: undefined!,
-    fullStatic: undefined!,
-    localeHashes: undefined!,
+  return { options, rawOptions, resolver, distDir, runtimeDir, i18nLayers }
+}
+
+export async function resolveContext(ctx: I18nNuxtContext, nuxt: Nuxt): Promise<ResolvedI18nContext> {
+  ctx.options.locales = await applyLayerOptions(ctx, nuxt)
+  ctx.options.locales = filterLocales(ctx)
+
+  const normalizedLocales = withImplicitDomainDefaults(
+    ctx.options.locales.map(x => normalizeDomainLocale(isString(x) ? { code: x, language: x } : x)),
+  )
+  const localeCodes = normalizedLocales.map(locale => locale.code)
+  validateLocaleCodes(localeCodes)
+  validateDefaultLocale(ctx.options.defaultLocale, localeCodes)
+
+  const localeInfo = resolveLocales(nuxt.options.srcDir, normalizedLocales, nuxt.vfs)
+  const localeFileMetas = localeInfo.flatMap(x => x.meta)
+  const vueI18nConfigPaths = await resolveLayerVueI18nConfigInfo(ctx)
+
+  const localeFilePaths = [...new Set(localeFileMetas.map(meta => meta.path))]
+  const rawResourcePaths = ctx.options.experimental.optimizeMessageBundling
+    ? resolveRawResourcePaths(localeFilePaths)
+    : new Set<string>()
+
+  // raw resources ship as lazily read nitro server assets, keeping message data out of the
+  // server bundles - dev keeps eager imports for HMR and virtual file support
+  if (!nuxt.options.dev) {
+    for (const meta of localeFileMetas) {
+      if (rawResourcePaths.has(meta.path)) {
+        meta.assetKey = `${meta.hash}.json`
+      }
+    }
   }
+
+  const { dynamicLocales, undeliverableLocales } = resolveDeliveryLocales(localeInfo)
+
+  const resolved = assign(ctx as ResolvedI18nContext, {
+    normalizedLocales,
+    localeCodes,
+    localeInfo,
+    localeFileMetas,
+    localeFilePaths,
+    rawResourcePaths,
+    vueI18nConfigPaths,
+    /**
+     * content-hash locale files now that all locales and configs are known,
+     * used to cache-bust per-locale message server routes without churning
+     * on every build
+     */
+    localeHashes: computeLocaleHashes(localeInfo, vueI18nConfigPaths),
+    dynamicLocales,
+    undeliverableLocales,
+    staticDeploy: !!nuxt.options.nitro.static,
+  })
+  // registered before the `nitro:init` hooks that read it - hooks run in registration order
+  nuxt.hook('nitro:init', (nitro) => {
+    resolved.staticDeploy = !!nitro.options.static
+  })
+  resolved.loaderOptions = generateLoaderOptions(resolved)
+
+  return resolved
 }

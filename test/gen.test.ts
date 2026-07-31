@@ -1,11 +1,10 @@
-import { generateLoaderOptions } from '../src/gen'
+import { generateLoaderOptions, simplifyLocaleOptions } from '../src/gen'
 import { getNormalizedLocales } from './pages/utils'
 import { resolveLocales, resolveRelativeLocales, resolveVueI18nConfigInfo } from '../src/utils'
 import { vi, beforeEach, afterEach, test, expect } from 'vitest'
 import { parse } from 'pathe'
 
-import type { FileMeta, LocaleInfo, LocaleObject, NuxtI18nOptions } from '../src/types'
-import type { Nuxt } from '@nuxt/schema'
+import type { FileMeta, LocaleObject, NuxtI18nOptions } from '../src/types'
 
 vi.mock('node:fs')
 
@@ -60,24 +59,6 @@ const NUXT_I18N_VUE_I18N_CONFIG = {
   path: '/path/to/i18n.config.ts'
 } as Required<FileMeta>
 
-const makeNuxtOptions = (localeInfo: LocaleInfo[]) => {
-  return {
-    options: {
-      rootDir: '/test',
-      srcDir: '/test',
-      buildDir: '/test/.nuxt',
-      _layers: [
-        {
-          config: {
-            i18n: {
-              locales: localeInfo
-            }
-          }
-        }
-      ]
-    }
-  } as unknown as Nuxt
-}
 
 test('basic', async () => {
   const locales = getMockLocales()
@@ -88,9 +69,9 @@ test('basic', async () => {
       vueI18nConfigPaths: [vueI18nConfig].filter((x): x is Required<FileMeta> => x != null),
       localeInfo,
       normalizedLocales: getNormalizedLocales(locales),
+      runtimeDir: '/runtime',
       options: { ...NUXT_I18N_OPTIONS }
-    },
-    makeNuxtOptions(localeInfo)
+    }
   )
 
   expect(code).toMatchSnapshot()
@@ -105,9 +86,9 @@ test('lazy', async () => {
       vueI18nConfigPaths: [vueI18nConfig].filter((x): x is Required<FileMeta> => x != null),
       localeInfo,
       normalizedLocales: getNormalizedLocales(locales),
+      runtimeDir: '/runtime',
       options: { ...NUXT_I18N_OPTIONS }
-    },
-    makeNuxtOptions(localeInfo)
+    }
   )
 
   expect(code).toMatchSnapshot()
@@ -137,10 +118,10 @@ test('multiple files', async () => {
     {
       vueI18nConfigPaths: [vueI18nConfig].filter((x): x is Required<FileMeta> => x != null),
       localeInfo,
+      runtimeDir: '/runtime',
       options: { ...NUXT_I18N_OPTIONS },
       normalizedLocales: getNormalizedLocales(locales)
-    },
-    makeNuxtOptions(localeInfo)
+    }
   )
 
   expect(code).toMatchSnapshot()
@@ -174,9 +155,9 @@ test('files with cache configuration', async () => {
       vueI18nConfigPaths: [vueI18nConfig].filter((x): x is Required<FileMeta> => x != null),
       localeInfo,
       normalizedLocales: getNormalizedLocales(locales),
+      runtimeDir: '/runtime',
       options: { ...NUXT_I18N_OPTIONS }
-    },
-    makeNuxtOptions(localeInfo)
+    }
   )
 
   expect(code).toMatchSnapshot()
@@ -205,9 +186,9 @@ test('locale file in nested', async () => {
       vueI18nConfigPaths: [vueI18nConfig].filter((x): x is Required<FileMeta> => x != null),
       localeInfo,
       normalizedLocales: getNormalizedLocales(locales),
+      runtimeDir: '/runtime',
       options: { ...NUXT_I18N_OPTIONS }
-    },
-    { ...makeNuxtOptions(localeInfo), options: { ...makeNuxtOptions(localeInfo).options, rootDir: '/test' } }
+    }
   )
 
   expect(code).toMatchSnapshot()
@@ -238,12 +219,45 @@ test('vueI18n option', async () => {
       vueI18nConfigPaths: vueI18nConfigs as Required<FileMeta>[],
       localeInfo,
       normalizedLocales: getNormalizedLocales(locales),
+      runtimeDir: '/runtime',
       options: {
         vueI18n: 'vue-i18n.config.ts'
       } as Required<NuxtI18nOptions>
-    },
-    makeNuxtOptions(localeInfo)
+    }
   )
 
   expect(code).toMatchSnapshot()
+})
+test('server asset loaders', async () => {
+  const locales = getMockLocales()
+  const localeInfo = await resolveLocales('/test', locales, {})
+  for (const meta of localeInfo.flatMap(x => x.meta)) {
+    meta.assetKey = `${meta.hash}.json`
+  }
+  const code = generateLoaderOptions(
+    {
+      vueI18nConfigPaths: [],
+      localeInfo,
+      normalizedLocales: getNormalizedLocales(locales),
+      runtimeDir: '/runtime',
+      options: { ...NUXT_I18N_OPTIONS }
+    }
+  )
+
+  expect(code).toMatchSnapshot()
+})
+
+test('simplifyLocaleOptions keeps locale codes and resolves objects through the domain passes', () => {
+  const run = (locales: unknown) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    simplifyLocaleOptions({ options: { locales } } as any, {} as any)
+
+  // `mergeConfigLocales` objectifies every locale before this runs, so a string only reaches it
+  // through a direct call - it must still not be spread into a character-indexed object
+  expect(run(['en', 'fr'])).toEqual(['en', 'fr'])
+  expect(run([])).toEqual([])
+  expect(run(['en', { code: 'fr', domain: 'fr.example.com' }])).toEqual([
+    { code: 'en', language: 'en', domains: [], defaultForDomains: [] },
+    { code: 'fr', domain: 'fr.example.com', domains: ['fr.example.com'], defaultForDomains: ['fr.example.com'] },
+  ])
 })

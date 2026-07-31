@@ -2,6 +2,7 @@ import type { I18nOptions, Locale } from 'vue-i18n'
 import type { PluginOptions } from '@intlify/unplugin-vue-i18n'
 import type { RouteMapGeneric, RouteMapI18n } from 'vue-router'
 import type { STRATEGIES } from './constants'
+import type { AlternateLanguageLink, CanonicalLink, HtmlAttributes, PropertyMeta } from 'unhead/types'
 
 export type {
   STRATEGY_NO_PREFIX,
@@ -108,6 +109,12 @@ export type FileMeta = {
   hash: string
   cache: boolean
   type: LocaleType
+  /** Whether the messages survive the JSON messages endpoint - message functions do not (#3880) */
+  serializable: boolean
+  /** Whether producing the messages needs the Nuxt app, which nitro cannot provide (#3940) */
+  appContext: boolean
+  /** server asset filename when the resource ships as a lazily read nitro server asset */
+  assetKey?: string
 }
 
 /**
@@ -164,7 +171,7 @@ export interface ExperimentalFeatures {
   /**
    * Locale messages cache lifetime in seconds
    * - `-1` cache disabled
-   * @default -1 // disabled, or `86400` (1 day) if all locale files are static files
+   * @default -1 // disabled, or `86400` (1 day) if any locale file is cacheable
    */
   cacheLifetime?: number
   /**
@@ -206,6 +213,21 @@ export interface ExperimentalFeatures {
    * @default false
    */
   compactRoutes?: boolean
+  /**
+   * Prerender hashed `messages.json` files into `.output/public/` at build time so lazy-loaded
+   * messages are served as static assets (from `app.cdnURL` when set) instead of the Nitro route.
+   * Messages from a `vue-i18n` config are merged at runtime and are not included in these files.
+   * @default false
+   */
+  prerenderMessages?: boolean
+  /**
+   * Embed static locale resources (JSON/JSON5/YAML) in server builds as raw messages instead of
+   * handing them to the bundler, reducing build time and memory. The client bundle is unaffected.
+   * Disable this if a custom Nitro Rollup plugin transforms your locale files, they are no longer
+   * imported into the server graph.
+   * @default true
+   */
+  optimizeMessageBundling?: boolean
 }
 
 export interface BundleOptions
@@ -219,6 +241,9 @@ export interface CustomBlocksOptions extends Pick<PluginOptions, 'defaultSFCLang
 export interface LocaleMessageCompilationOptions {
   /**
    * Whether to strictly check that the locale message does not contain HTML tags. If HTML tags are included, an error is thrown.
+   *
+   * Resources that are not precompiled were never checked, so HTML in those is reported as a build
+   * warning while this option is left at its default. Set it explicitly to reject or allow them.
    *
    * @default true
    */
@@ -537,6 +562,19 @@ export interface LocaleObject<T = Locale> {
 }
 
 /**
+ * A locale passed through `normalizeDomainLocale`: `domains` and `defaultForDomains` are always
+ * set, so domain logic can read them without a fallback. `domainDefault` is fully resolved into
+ * `defaultForDomains` and reading it past normalization means the two can disagree, so the type
+ * takes it away. `domain` is kept: it additionally marks the locale's own domain, which
+ * `domains` cannot express.
+ */
+export type NormalizedLocaleObject<T = Locale> = LocaleObject<T> & {
+  domains: string[]
+  defaultForDomains: string[]
+  domainDefault?: never
+}
+
+/**
  * @public
  * @deprecated Configuring baseUrl as a function is deprecated and will be removed in the v11.
  *
@@ -580,6 +618,7 @@ export interface I18nHeadOptions {
 /**
  * Meta attributes for head properties.
  * @public
+ * @deprecated incompatible with unhead v3 - use `ResolvableMeta`, `ResolvableLink` and `HtmlAttributes` from `unhead/types` instead.
  */
 export type MetaAttrs = Record<string, string>
 
@@ -589,11 +628,11 @@ export type MetaAttrs = Record<string, string>
  */
 export interface I18nHeadMetaInfo {
   /** HTML attributes for the HTML element */
-  htmlAttrs: MetaAttrs
+  htmlAttrs: Pick<HtmlAttributes, 'lang' | 'dir'>
   /** Meta tags */
-  meta: MetaAttrs[]
+  meta: PropertyMeta[]
   /** Link tags */
-  link: MetaAttrs[]
+  link: (AlternateLanguageLink | CanonicalLink)[]
 }
 
 /**
@@ -609,7 +648,7 @@ export interface I18nPublicRuntimeConfig {
   /** Domain locales mapping */
   domainLocales: { [key: Locale]: { domain: string | undefined } }
   /** @internal Overwritten at build time, used to pass generated options to runtime */
-  locales: NonNullable<Required<NuxtI18nOptions<unknown>>['locales']>
+  locales: string[] | NormalizedLocaleObject[]
   /** @internal Overwritten at build time, used to pass generated options to runtime */
   defaultLocale: Required<NuxtI18nOptions>['defaultLocale']
   /** @internal Overwritten at build time, used to pass generated options to runtime */

@@ -1,11 +1,15 @@
-import type { NuxtI18nOptions, LocaleObject, Strategies } from '../../src/types'
+import type { NuxtI18nOptions, LocaleObject, NormalizedLocaleObject, Strategies } from '../../src/types'
 import type { NuxtPage } from '@nuxt/schema'
 import type { ComputedRouteOptions, LocalizableRoute, RouteOptionsResolver } from '../../src/kit/gen'
 
 import { isString } from '@intlify/shared'
+import { normalizeDomainLocale } from '../../src/utils'
+import { canonicalDomainFromLocale, domainForHost, domainFromLocale } from '../../src/runtime/shared/domain'
+import { createBaseUrlGetter } from '../../src/runtime/context'
 
-export const getNormalizedLocales = (locales: string[] | LocaleObject[] = []): LocaleObject[] =>
-  locales.map(x => (isString(x) ? { code: x, language: x } : x))
+/** Mirrors how `resolveContext` normalizes configured locales - see `src/context.ts` */
+export const getNormalizedLocales = (locales: string[] | LocaleObject[] = []): NormalizedLocaleObject[] =>
+  locales.map(x => normalizeDomainLocale(isString(x) ? { code: x, language: x } : x))
 
 type MarkRequired<Type, Keys extends keyof Type> = Type extends Type ? Omit<Type, Keys> & Required<Pick<Type, Keys>> : never;
 export function getNuxtOptions(
@@ -84,7 +88,6 @@ export function createTestConfig(opts: {
   defaultLocale?: string
   trailingSlash?: boolean
   optionsResolver?: RouteOptionsResolver
-  includeUnprefixedFallback?: boolean
   differentDomains?: boolean
   multiDomainLocales?: boolean
   routesNameSeparator?: string
@@ -99,9 +102,45 @@ export function createTestConfig(opts: {
     routesNameSeparator: opts.routesNameSeparator ?? '___',
     defaultLocaleRouteNameSuffix: opts.defaultLocaleRouteNameSuffix ?? 'default',
     optionsResolver: opts.optionsResolver,
-    includeUnprefixedFallback: opts.includeUnprefixedFallback ?? false,
     differentDomains: opts.differentDomains,
     multiDomainLocales: opts.multiDomainLocales,
     compactRoutes: opts.compactRoutes,
+  }
+}
+
+/**
+ * Mirrors how `createNuxtI18nContext` builds the base URL getters - see `src/runtime/context.ts`.
+ * Derived through the real resolvers rather than stubbed per suite: a hand-written getter cannot
+ * expose a current-host preference, which is what let #4106's hreflang bug through.
+ */
+export function createTestBaseUrls(opts: {
+  locales: NormalizedLocaleObject[]
+  host: string
+  protocol?: string
+  baseUrl?: string
+  appBase?: string
+  domains?: boolean
+  defaultLocale?: string
+}) {
+  const url = { host: opts.host, protocol: opts.protocol ?? 'https:' }
+  // `module.ts` seeds an entry per locale from the scalar `domain`
+  const domainLocales = Object.fromEntries(opts.locales.map(l => [l.code, { domain: l.domain ?? '' }]))
+  const shared = {
+    baseUrl: opts.baseUrl,
+    appBase: opts.appBase ?? '/',
+    domains: opts.domains ?? true,
+    getDomainForHost: () => domainForHost(domainLocales, url, opts.locales),
+  }
+
+  return {
+    getBaseUrl: createBaseUrlGetter({
+      ...shared,
+      getDomainFromLocale: l => domainFromLocale(domainLocales, url, l, opts.locales),
+    }),
+    getCanonicalBaseUrl: createBaseUrlGetter({
+      ...shared,
+      getDomainFromLocale: l =>
+        canonicalDomainFromLocale(domainLocales, url, l, opts.defaultLocale, opts.locales),
+    }),
   }
 }

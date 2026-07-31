@@ -4,7 +4,7 @@ import { assign, isString } from '@intlify/shared'
 import type { Locale } from 'vue-i18n'
 import type { RouteLocationNamedRaw, RouteLocationPathRaw, RouteLocationRaw } from 'vue-router'
 import type { CompatRoute } from '../types'
-import type { ComposableContext } from '../utils'
+import type { RoutingContext } from './context'
 
 export type RouteLikeWithPath = RouteLocationPathRaw & { name?: string }
 export type RouteLikeWithName = RouteLocationNamedRaw & { path?: string }
@@ -13,7 +13,7 @@ export type RouteLike = RouteLikeWithPath | RouteLikeWithName
 /**
  * Resolves a localized path of the passed in route.
  */
-export function localePath(ctx: ComposableContext, route: RouteLocationRaw, locale: Locale = ctx.getLocale()): string {
+export function localePath(ctx: RoutingContext, route: RouteLocationRaw, locale: Locale = ctx.getLocale()): string {
   // return external url as is
   if (isString(route) && hasProtocol(route, { acceptRelative: true })) {
     return route
@@ -29,7 +29,7 @@ export function localePath(ctx: ComposableContext, route: RouteLocationRaw, loca
 /**
  * Resolves a localized variant of the passed route.
  */
-export function localeRoute(ctx: ComposableContext, route: RouteLocationRaw, locale: Locale = ctx.getLocale()) {
+export function localeRoute(ctx: RoutingContext, route: RouteLocationRaw, locale: Locale = ctx.getLocale()) {
   try {
     return resolveRoute(ctx, route, locale)
   } catch {
@@ -59,9 +59,15 @@ function normalizeRawLocation(route: RouteLocationRaw): RouteLike {
 /**
  * Try resolving route and throw on failure
  */
-function resolveRoute(ctx: ComposableContext, route: RouteLocationRaw, locale: Locale) {
+function resolveRoute(ctx: RoutingContext, route: RouteLocationRaw, locale: Locale) {
   const normalized = normalizeRawLocation(route)
-  const resolved = ctx.router.resolve(ctx.resolveLocalizedRouteObject(normalized, locale))
+  const localized = ctx.resolveLocalizedRouteObject(normalized, locale)
+  // the matcher ignores `path` when `name` is set, but its presence makes `router.resolve()` take
+  // its path branch, which skips `encodeParams()` and decodes escapes into delimiters (#4079, #4098)
+  if (localized.name) {
+    localized.path = undefined
+  }
+  const resolved = ctx.router.resolve(localized)
   if (resolved.name) {
     return resolved
   }
@@ -74,7 +80,7 @@ function resolveRoute(ctx: ComposableContext, route: RouteLocationRaw, locale: L
  * Resolve the localized path of the current route.
  */
 export function switchLocalePath(
-  ctx: ComposableContext,
+  ctx: RoutingContext,
   locale: Locale,
   route: CompatRoute = ctx.router.currentRoute.value,
 ): string {
@@ -87,7 +93,7 @@ export function switchLocalePath(
   /**
    * Nuxt route uses a proxy with getters for performance reasons (https://github.com/nuxt/nuxt/pull/21957).
    * Spreading will result in an empty object, so we make a copy of the route by accessing each getter property by name.
-   * We skip the `matched` and `redirectedFrom` properties.
+   * We skip the `matched`, `redirectedFrom` and `path` properties.
    */
   const routeCopy = {
     name,
@@ -99,7 +105,6 @@ export function switchLocalePath(
     fullPath: route.fullPath,
     query: route.query,
     hash: route.hash,
-    path: route.path,
     meta: route.meta,
   }
 

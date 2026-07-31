@@ -1,44 +1,190 @@
 import { hasProtocol } from 'ufo'
 import { normalizedLocales } from '#build/i18n-options.mjs'
-import { toArray } from './utils'
 
-import type { LocaleObject } from '#internal-i18n-types'
+import type { I18nPublicRuntimeConfig, NormalizedLocaleObject } from '#internal-i18n-types'
 
-export function matchDomainLocale(locales: LocaleObject[], host: string, pathLocale: string): string | undefined {
-  const normalizeDomain = (domain: string = '') => domain.replace(/https?:\/\//, '')
-  const matches = locales.filter(
-    locale => normalizeDomain(locale.domain) === host || toArray(locale.domains).includes(host),
-  )
+/**
+ * Configured domains may include a protocol (used when generating URLs), comparisons
+ * against the request host use the host part only. `ufo` helpers are unsuitable here
+ * as they treat the `host:port` shape as a protocol.
+ */
+export const normalizeDomain = (domain: string = '') => domain.replace(/^https?:\/\//i, '').toLowerCase()
 
-  if (matches.length <= 1) {
-    return matches[0]?.code
-  }
+/**
+ * Whether the locale is served on the given host
+ */
+export function isLocaleOnHost(locale: NormalizedLocaleObject | undefined, host: string): boolean {
+  return !!locale?.domains.some(x => normalizeDomain(x) === host)
+}
+
+/**
+ * How `host` can reach `locale`:
+ * - `here` - served on this host, either because it is one of the locale's domains or because the
+ *   locale configures none and is served on all of them
+ * - `other-domain` - the locale belongs to domains this host is not one of
+ * - `off-host` - same, but this host matches no configured domain at all (a staging domain, a health
+ *   check by IP), where the site keeps serving every locale and never sends a visitor to a domain
+ */
+export function resolveLocaleReach(
+  locales: NormalizedLocaleObject[],
+  host: string,
+  locale: string,
+): 'here' | 'other-domain' | 'off-host' {
+  const target = locales.find(l => l.code === locale)
+  if (!target?.domains.length || isLocaleOnHost(target, host)) { return 'here' }
+  return locales.some(l => isLocaleOnHost(l, host)) ? 'other-domain' : 'off-host'
+}
+
+/**
+ * Whether the locale can be served on the given host - every {@link resolveLocaleReach} answer but
+ * `other-domain`. Shares that resolution so the two cannot disagree.
+ */
+export function isLocaleServedOnHost(locales: NormalizedLocaleObject[], host: string, locale: string): boolean {
+  return resolveLocaleReach(locales, host, locale) !== 'other-domain'
+}
+
+/** `defaultForDomains` leads so the domain agrees with the unprefixed shape derived from it */
+export const canonicalDomain = (target: NormalizedLocaleObject | undefined) =>
+  target?.defaultForDomains[0] || target?.domain || target?.domains[0]
+
+/**
+ * The domain that should serve `locale` when `host` does not. Undefined when the current host
+ * can serve it, which keeps hosts that match no configured domain on relative URLs instead of
+ * sending them to a configured domain.
+ */
+function relocateHostForLocale(host: string, locale: string, locales: NormalizedLocaleObject[]): string | undefined {
+  if (isLocaleServedOnHost(locales, host, locale)) { return }
+
+  return canonicalDomain(locales.find(l => l.code === locale))
+}
+
+export function matchDomainLocale(
+  locales: NormalizedLocaleObject[],
+  host: string,
+  pathLocale: string,
+): string | undefined {
+  const matches = locales.filter(locale => isLocaleOnHost(locale, host))
 
   return (
     // match by current path locale
-    matches.find(l => l.code === pathLocale)?.code
+    matches.find(l => l.code === pathLocale)
     // fallback to default locale for the domain
-    || matches.find(l => l.defaultForDomains?.includes(host) ?? l.domainDefault)?.code
+    || matches.find(l => l.defaultForDomains.some(domain => normalizeDomain(domain) === host))
+    // a host claiming no default still resolves one of its own locales, never one served elsewhere
+    || matches[0]
+  )?.code
+}
+
+/**
+ * Whether a cookie scoped to `cookieDomain` reaches every configured domain, i.e. each domain
+ * equals the scope or is a subdomain of it. Ports are irrelevant to cookies.
+ */
+export function cookieSpansDomains(locales: NormalizedLocaleObject[], cookieDomain: string): boolean {
+  const scope = cookieDomain.replace(/^\./, '').replace(/:\d+$/, '').toLowerCase()
+  return locales.every(l =>
+    l.domains.concat(l.domain || []).every((domain) => {
+      const host = normalizeDomain(domain).replace(/:\d+$/, '')
+      return host === scope || host.endsWith('.' + scope)
+    }),
   )
 }
+
+const withProtocol = (domain: string, url: { protocol: string }) =>
+  hasProtocol(domain, { strict: true }) ? domain : url.protocol + '//' + domain
 
 export function domainFromLocale(
   domainLocales: Record<string, { domain: string | undefined }>,
   url: { host: string, protocol: string },
   locale: string,
+  locales: NormalizedLocaleObject[] = normalizedLocales,
 ): string | undefined {
-  const lang = normalizedLocales.find(x => x.code === locale)
-  // lookup the `differentDomain` origin associated with given locale.
-  const domain = domainLocales?.[locale]?.domain || lang?.domain || lang?.domains?.find(v => v === url.host)
+  const lang = locales.find(x => x.code === locale)
+  // lookup the `differentDomain` origin associated with given locale
+  const domain
+    = domainLocales?.[locale]?.domain
+      || lang?.domain
+      || lang?.domains.find(v => normalizeDomain(v) === url.host)
+      || relocateHostForLocale(url.host, locale, locales)
 
   if (!domain) {
     import.meta.dev && console.warn('[nuxt-i18n] Could not find domain name for locale ' + locale)
     return
   }
 
-  if (hasProtocol(domain, { strict: true })) {
-    return domain
+  return withProtocol(domain, url)
+}
+
+/**
+ * Resolves {@link canonicalDomain} for `locale`, unlike {@link domainFromLocale} without a
+ * current-host preference - alternate links naming a different URL per host are non-reciprocal.
+ * A locale configuring no domain is served on all of them, so it falls back to `fallbackLocale`'s
+ * domain (the cluster's own) rather than to whichever host is answering.
+ */
+export function canonicalDomainFromLocale(
+  domainLocales: Record<string, { domain: string | undefined }>,
+  url: { host: string, protocol: string },
+  locale: string,
+  fallbackLocale?: string,
+  locales: NormalizedLocaleObject[] = normalizedLocales,
+): string | undefined {
+  const forLocale = (code: string) => domainLocales?.[code]?.domain || canonicalDomain(locales.find(x => x.code === code))
+  const domain = forLocale(locale) || (fallbackLocale ? forLocale(fallbackLocale) : undefined)
+  return domain ? withProtocol(domain, url) : undefined
+}
+
+/**
+ * The configured domain matching the request host, keeping the protocol it was configured with.
+ * This answers "where am I", unlike {@link domainFromLocale} which answers "where is this locale
+ * served" and may resolve to another domain - deriving the current origin from a locale sends
+ * hosts that serve no default locale to whichever domain `defaultLocale` happens to live on.
+ */
+export function domainForHost(
+  domainLocales: I18nPublicRuntimeConfig['domainLocales'],
+  url: { host: string, protocol: string },
+  locales: NormalizedLocaleObject[] = normalizedLocales,
+): string | undefined {
+  let match: string | undefined
+  for (const locale of locales) {
+    const patched = withRuntimeDomain(locale, domainLocales)
+    // a locale configuring both keeps `domain` outside `domains`, `domainFromLocale` reads it too
+    for (const candidate of [patched.domain, ...patched.domains]) {
+      if (!candidate || normalizeDomain(candidate) !== url.host) { continue }
+      // locales sharing a host may not all configure it with a protocol, take the first match but
+      // let one carrying a protocol replace it so `https` is not lost to configuration order
+      if (!match || (!hasProtocol(match, { strict: true }) && hasProtocol(candidate, { strict: true }))) {
+        match = candidate
+      }
+    }
   }
 
-  return url.protocol + '//' + domain
+  return match && withProtocol(match, url)
+}
+
+/**
+ * Returns the locale object with the domain overridden by `domainLocales` runtime config (see also `getHostLocale`),
+ * a no-op outside domain setups since the override entries are empty.
+ */
+export function withRuntimeDomain<T extends string | NormalizedLocaleObject>(
+  locale: T,
+  domainLocales: I18nPublicRuntimeConfig['domainLocales'],
+): T {
+  if (typeof locale === 'string') {
+    return locale
+  }
+  const properties = locale as NormalizedLocaleObject
+  const domain = domainLocales[properties.code]?.domain
+  // `domainLocales` is seeded from the configured scalar `domain`, an entry matching it is not an
+  // override - rebuilding on it would drop the locale's other domains
+  if (!domain || domain === properties.domain) {
+    return locale
+  }
+
+  // the override is a single domain, leaving the build time `domains` in place would keep the
+  // locale matching the host it was configured with as well as the one it was moved to
+  return {
+    ...properties,
+    domain,
+    domains: [domain],
+    defaultForDomains: properties.defaultForDomains.length ? [domain] : [],
+  } as T
 }

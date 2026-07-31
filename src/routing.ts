@@ -4,9 +4,78 @@ import {
   type RouteContext,
   type RouteOptionsResolver,
   createRouteContext,
+  joinPath,
   localizeSingleRoute,
 } from './kit/gen'
-import type { LocaleObject, Strategies } from './types'
+import type { NormalizedLocaleObject, Strategies } from './types'
+
+export type RouteResources = {
+  /** plain paths mounted as-is for at least one locale */
+  localizedPaths: string[]
+  /** per-locale custom paths and disables, locales without an entry use the plain path */
+  pathToI18nConfig: Record<string, Record<string, string | false>>
+  /** custom localized path to plain path */
+  i18nPathToPath: Record<string, string>
+  /** paths with localization fully disabled */
+  disabledPaths: string[]
+}
+
+/**
+ * Collects the runtime route resources (`i18n-route-resources.mjs`) during route
+ * localization, keyed by the full paths routes actually mount at.
+ */
+export function createRouteResourcesCollector() {
+  const pathToConfig: Record<string, Record<string, string | false>> = {}
+
+  const collect: RouteContext['onLocalize'] = (route, routeOptions, options) => {
+    const path = joinPath(options.parentPath, route.path)
+    if (routeOptions == null) {
+      // only routes with localization explicitly disabled are recorded (not e.g. redirect-only routes)
+      if ((route.meta as Record<string, unknown> | undefined)?.i18n === false) {
+        const entry = (pathToConfig[path] ??= {})
+        for (const locale of options.locales) { entry[locale] ??= false }
+      }
+      return
+    }
+
+    const entry = (pathToConfig[path] ??= {})
+    for (const locale of routeOptions.locales) {
+      // the walk is top-down, the parent's localized path (unprefixed) is already collected
+      const parentPath = options.parentPath ? pathToConfig[options.parentPath]?.[locale] || options.parentPath : undefined
+      entry[locale] = joinPath(parentPath, routeOptions.paths[locale] ?? route.path)
+    }
+    for (const locale of options.locales) { entry[locale] ??= false }
+  }
+
+  const toResources = (): RouteResources => {
+    const resources: RouteResources = { localizedPaths: [], pathToI18nConfig: {}, i18nPathToPath: {}, disabledPaths: [] }
+    for (const [path, entry] of Object.entries(pathToConfig)) {
+      // identity localizations (localized path equals the plain path) are kept implicit
+      const exceptions: Record<string, string | false> = {}
+      let hasIdentity = false
+      let hasLocalized = false
+      for (const [locale, localized] of Object.entries(entry)) {
+        if (localized === path) {
+          hasIdentity = hasLocalized = true
+          continue
+        }
+        exceptions[locale] = localized
+        if (!localized) { continue }
+        resources.i18nPathToPath[localized] = path
+        hasLocalized = true
+      }
+      if (!hasLocalized) {
+        resources.disabledPaths.push(path)
+        continue
+      }
+      if (hasIdentity) { resources.localizedPaths.push(path) }
+      if (Object.keys(exceptions).length) { resources.pathToI18nConfig[path] = exceptions }
+    }
+    return resources
+  }
+
+  return { collect, toResources }
+}
 
 function createShouldPrefix(opts: SetupLocalizeRoutesOptions, ctx: RouteContext) {
   if (opts.strategy === 'no_prefix') { return () => false }
@@ -19,33 +88,63 @@ function createShouldPrefix(opts: SetupLocalizeRoutesOptions, ctx: RouteContext)
   }
 }
 
-function shouldLocalizeRoutes(options: SetupLocalizeRoutesOptions) {
+export function shouldLocalizeRoutes(options: SetupLocalizeRoutesOptions) {
   if (options.strategy !== 'no_prefix') { return true }
-  // no_prefix is only supported when using a separate domain per locale
-  if (!options.differentDomains) { return false }
 
-  // check if domains are used multiple times
+  // without a prefix the host is all that names a locale, and only these options make the runtime
+  // resolve one from it (`__I18N_DOMAINS__`) - localizing routes without it leaves them unreachable
+  if (!options.differentDomains && !options.multiDomainLocales) { return false }
+
+  // compared by host, as configured domains may include a protocol
   const domains = new Set<string>()
   for (const locale of options.locales) {
-    if (!locale.domain) { continue }
-    if (domains.has(locale.domain)) {
-      console.error(
-        `Cannot use \`strategy: no_prefix\` when using multiple locales on the same domain`
-        + ` - found multiple entries with ${locale.domain}`,
-      )
-      return false
+    for (const domain of locale.domains) {
+      const host = domain.replace(/^https?:\/\//, '')
+      if (domains.has(host)) {
+        console.error(
+          `Cannot use \`strategy: no_prefix\` when using multiple locales on the same domain`
+          + ` - found multiple entries with ${domain}.`
+          + ` Routes stay unlocalized, so \`switchLocalePath\` and the \`hreflang\`/\`canonical\` tags resolve to nothing.`,
+        )
+        return false
+      }
+      domains.add(host)
     }
-    domains.add(locale.domain)
   }
 
-  return true
+  // one domain per locale is the requirement, so a domain setup configuring none localizes nothing
+  return domains.size > 0
 }
 
-function resolveDefaultLocales(config: SetupLocalizeRoutesOptions) {
+/** Locales acting as the default (unprefixed) locale for at least one domain */
+function getDomainDefaultLocales(locales: NormalizedLocaleObject[]): string[] {
+  return locales.filter(locale => locale.defaultForDomains.length).map(locale => locale.code)
+}
+
+const usesDefaultVariants = (strategy: Strategies | undefined) =>
+  strategy === 'prefix_except_default' || strategy === 'prefix_and_default'
+
+/**
+ * Locales getting an unprefixed `___default` tree alongside their prefixed routes.
+ */
+function resolveDefaultTreeLocales(config: SetupLocalizeRoutesOptions, strategy: Strategies): string[] {
+  if (config.differentDomains || config.multiDomainLocales) {
+    // `setupMultiDomainLocales` keeps the current host's variant at runtime
+    return usesDefaultVariants(strategy) ? getDomainDefaultLocales(config.locales) : []
+  }
+  return strategy === 'prefix_and_default' && config.defaultLocale ? [config.defaultLocale] : []
+}
+
+function resolveDefaultLocales(config: SetupLocalizeRoutesOptions, strategy: Strategies) {
+  // under the `*_default` strategies the unprefixed locale differs per domain, `___default`
+  // variants + runtime surgery resolve it - a build time default would claim the same path
+  if ((config.differentDomains || config.multiDomainLocales) && usesDefaultVariants(strategy)) {
+    return []
+  }
+
   let defaultLocales = [config.defaultLocale ?? '']
   if (config.differentDomains) {
-    const domainDefaults = config.locales.filter(locale => !!locale.domainDefault).map(locale => locale.code)
-    defaultLocales = defaultLocales.concat(domainDefaults)
+    defaultLocales = defaultLocales.concat(getDomainDefaultLocales(config.locales))
   }
   return defaultLocales
 }
@@ -56,13 +155,13 @@ type SetupLocalizeRoutesOptions = {
   trailingSlash?: boolean
   differentDomains?: boolean
   multiDomainLocales?: boolean
-  includeUnprefixedFallback?: boolean
-  locales: LocaleObject[]
+  locales: NormalizedLocaleObject[]
   routesNameSeparator: string
   defaultLocaleRouteNameSuffix: string
   defaultLocale?: string
   optionsResolver?: RouteOptionsResolver
   compactRoutes?: boolean
+  onLocalize?: RouteContext['onLocalize']
 }
 
 /**
@@ -71,15 +170,16 @@ type SetupLocalizeRoutesOptions = {
 export function localizeRoutes(routes: LocalizableRoute[], config: SetupLocalizeRoutesOptions): LocalizableRoute[] {
   if (!shouldLocalizeRoutes(config)) { return routes }
 
+  const strategy = config.strategy ?? 'prefix_and_default'
+
   const ctx = createRouteContext({
     optionsResolver: config.optionsResolver,
     trailingSlash: config.trailingSlash ?? false,
-    defaultLocales: resolveDefaultLocales(config),
+    defaultLocales: resolveDefaultLocales(config, strategy),
     routesNameSeparator: config.routesNameSeparator,
     defaultLocaleRouteNameSuffix: config.defaultLocaleRouteNameSuffix,
+    onLocalize: config.onLocalize,
   })
-
-  const strategy = config.strategy ?? 'prefix_and_default'
 
   /**
    * Compact routes: merge all per-locale routes into a single `/:locale(en|fr)/path` route
@@ -90,7 +190,6 @@ export function localizeRoutes(routes: LocalizableRoute[], config: SetupLocalize
     && strategy !== 'no_prefix'
     && !config.differentDomains
     && !config.multiDomainLocales
-    && !(strategy === 'prefix' && config.includeUnprefixedFallback)
   ) {
     const defaultLocale = config.defaultLocale ?? ''
     ctx.compactRoute = (route, routeOptions, params) => {
@@ -152,41 +251,14 @@ export function localizeRoutes(routes: LocalizableRoute[], config: SetupLocalize
     }
   }
 
-  /**
-   * Default tree for prefix_and_default strategy
-   */
-  if (strategy === 'prefix_and_default') {
+  const defaultTreeLocales = new Set(resolveDefaultTreeLocales(config, strategy))
+  if (defaultTreeLocales.size) {
     // unshift to preserve test snapshots
     ctx.localizers.unshift({
-      enabled: ({ options, locale }) => ctx.isDefaultLocale(locale) && !options.defaultTree && options.parent == null,
+      enabled: ({ locale, options }) =>
+        defaultTreeLocales.has(locale) && !options.defaultTree && options.parent == null,
       localizer: ({ route, ctx, locale, options }) =>
         localizeSingleRoute(route, { ...options, locales: [locale], defaultTree: true }, ctx),
-    })
-  }
-
-  /**
-   * Unprefixed default routes for multi domain locales
-   */
-  const multiDomainLocales = config.multiDomainLocales ?? false
-  if (multiDomainLocales && (config.strategy === 'prefix_except_default' || config.strategy === 'prefix_and_default')) {
-    // unshift to preserve test snapshots
-    ctx.localizers.unshift({
-      enabled: ({ usePrefix }) => usePrefix,
-      localizer: ({ unprefixed, route, ctx, locale }) => [
-        { ...route, name: ctx.localizeRouteName(route, locale, true), path: unprefixed },
-      ],
-    })
-  }
-
-  /**
-   * Unprefixed fallback routes
-   */
-  const includeUnprefixedFallback = config.includeUnprefixedFallback ?? false
-  if (strategy === 'prefix' && includeUnprefixedFallback) {
-    // unshift to preserve test snapshots
-    ctx.localizers.unshift({
-      enabled: ({ usePrefix, locale }) => usePrefix && ctx.isDefaultLocale(locale),
-      localizer: ({ route }) => [route],
     })
   }
 

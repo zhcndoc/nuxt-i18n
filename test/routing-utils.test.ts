@@ -2,29 +2,19 @@ import { describe, it, assert, test } from 'vitest'
 import { createLocaleRouteNameGetter } from '../src/runtime/routing/utils'
 import { findBrowserLocale } from '#i18n-kit/browser'
 
-const ROUTE_GEN_CONFIG = {
-  defaultLocale: 'en',
-  routesNameSeparator: '___',
-  defaultLocaleRouteNameSuffix: 'default'
-}
+// the getter reads the route table, so the fixtures are the routes each strategy generates
+const tableFor = (names: string[]) => (name: string) => names.includes(name)
 
 const routeNameGetters = {
-  // noPrefix: createLocaleRouteNameGetter({ strategy: 'no_prefix', differentDomains: false, ...ROUTE_GEN_CONFIG }),
-  noPrefix: (...args) => {
-    globalThis['__I18N_STRATEGY__'] = 'no_prefix'
-    globalThis['__I18N_ROUTING__'] = false
-    return createLocaleRouteNameGetter(ROUTE_GEN_CONFIG.defaultLocale)(...args)
-  },
-  prefixAndDefault: (...args) => {
-    globalThis['__I18N_STRATEGY__'] = 'prefix_and_default'
-    globalThis['__I18N_ROUTING__'] = true
-    return createLocaleRouteNameGetter(ROUTE_GEN_CONFIG.defaultLocale)(...args)
-  },
-  prefixExceptDefault: (...args) => {
-    globalThis['__I18N_STRATEGY__'] = 'prefix_except_default'
-    globalThis['__I18N_ROUTING__'] = true
-    return createLocaleRouteNameGetter(ROUTE_GEN_CONFIG.defaultLocale)(...args)
-  }
+  noPrefix: createLocaleRouteNameGetter(tableFor(['route1']), { routing: false, domains: false }),
+  prefixAndDefault: createLocaleRouteNameGetter(tableFor(['route1___en___default', 'route1___en', 'route1___ja']), {
+    routing: true,
+    domains: false
+  }),
+  prefixExceptDefault: createLocaleRouteNameGetter(tableFor(['route1___en', 'route1___ja']), {
+    routing: true,
+    domains: false
+  })
 }
 
 describe('getLocaleRouteName', () => {
@@ -48,8 +38,14 @@ describe('getLocaleRouteName', () => {
 
   describe('irregular', () => {
     describe('route name is null', () => {
-      it('should be ` (null)___en___default`', () => {
-        assert.equal(routeNameGetters.prefixAndDefault(null, 'en'), '___en___default')
+      it('falls back to the plain localized name, which resolves to nothing either way', () => {
+        assert.equal(routeNameGetters.prefixAndDefault(null, 'en'), '___en')
+      })
+    })
+
+    describe('locale has no route in the table', () => {
+      it('returns the plain localized name so resolution fails', () => {
+        assert.equal(routeNameGetters.prefixAndDefault('route1', 'xx'), 'route1___xx')
       })
     })
   })

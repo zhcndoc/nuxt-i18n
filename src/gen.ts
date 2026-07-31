@@ -1,35 +1,49 @@
-import { isString } from '@intlify/shared'
+import { assign, isString } from '@intlify/shared'
 import { genDynamicImport, genImport, genSafeVariableName, genString } from 'knitwork'
 import { basename, join, relative, resolve } from 'pathe'
 import { asI18nVirtual } from './transform/utils'
+import { normalizeDomainLocale, withImplicitDomainDefaults } from './utils'
 
 import type { Nuxt } from '@nuxt/schema'
 import type { LocaleObject } from './types'
-import type { I18nNuxtContext } from './context'
+import type { ResolvedI18nContext } from './context'
 
-function stripLocaleFiles(locale: LocaleObject) {
-  delete locale.files
-  delete locale.file
-  return locale
+// copy - generators run repeatedly (template re-emits) and must not alter context locales
+function stripLocaleFiles<T extends LocaleObject>(locale: T): T {
+  const stripped = assign({}, locale)
+  delete stripped.files
+  delete stripped.file
+  return stripped
 }
 
-export function simplifyLocaleOptions(ctx: I18nNuxtContext, _nuxt: Nuxt) {
-  const locales = (ctx.options.locales ?? []) as LocaleObject[]
-  const hasLocaleObjects = locales?.some(x => !isString(x))
-  return locales.map(locale => (!hasLocaleObjects ? locale.code : stripLocaleFiles(locale)))
+export function simplifyLocaleOptions(ctx: ResolvedI18nContext, _nuxt: Nuxt) {
+  const locales = ctx.options.locales ?? []
+  // codes alone carry no domain configuration, and keeping them saves shipping empty objects.
+  // `mergeConfigLocales` resolves every locale into an object before this runs, so this is only
+  // reached for an empty list - spreading a string here yields a character-indexed object
+  if (!locales.some(x => !isString(x))) {
+    return locales
+  }
+  // normalize so runtime locale consumers (e.g. `defaultForDomains` reads) only handle one shape,
+  // through the same passes as `ctx.normalizedLocales` so both channels agree on route shape
+  return withImplicitDomainDefaults(
+    locales.map(locale => normalizeDomainLocale(isString(locale) ? { code: locale, language: locale } : locale)),
+  ).map(stripLocaleFiles)
 }
 
 type LocaleLoaderData = {
   key: string
   load: string
   loadServer: string
-  relative: string
+  virtualId: string
   cache: boolean
 }
 
+/** A loader that resolves to no messages, for the graph a locale file is kept out of */
+export const STUB_LOADER = '() => Promise.resolve({})'
+
 export function generateLoaderOptions(
-  ctx: Pick<I18nNuxtContext, 'options' | 'vueI18nConfigPaths' | 'localeInfo' | 'normalizedLocales'>,
-  nuxt: Nuxt,
+  ctx: Pick<ResolvedI18nContext, 'options' | 'vueI18nConfigPaths' | 'localeInfo' | 'normalizedLocales' | 'runtimeDir'>,
 ) {
   /**
    * Prepare locale file imports
@@ -43,14 +57,27 @@ export function generateLoaderOptions(
       if (!importMapper.has(meta.path)) {
         const identifier = `locale_${genSafeVariableName(basename(meta.path))}_${meta.hash}`
         const key = genString(identifier)
+        const virtualId = asI18nVirtual(meta.hash)
 
-        importStatements.add(genImport(asI18nVirtual(meta.hash), identifier))
+        // a file reaching for the Nuxt app has nothing to run in nitro, and dragging app-only
+        // modules into that bundle is what breaks its build (#3940)
+        if (!meta.appContext) {
+          // resources with an `assetKey` ship as nitro server assets, read lazily instead of
+          // imported eagerly - the message data stays out of the server bundle (see `setupNitro`)
+          importStatements.add(meta.assetKey
+            ? genImport(resolve(ctx.runtimeDir, 'server/utils/assets'), [{ name: 'readI18nAsset' }])
+            : genImport(virtualId, identifier))
+        }
         importMapper.set(meta.path, {
           key,
-          relative: relative(nuxt.options.buildDir, meta.path),
+          virtualId,
           cache: meta.cache ?? true,
-          load: genDynamicImport(asI18nVirtual(meta.hash), { comment: `webpackChunkName: ${key}` }),
-          loadServer: `() => Promise.resolve(${identifier})`,
+          load: genDynamicImport(virtualId, { comment: `webpackChunkName: ${key}` }),
+          loadServer: meta.appContext
+            ? STUB_LOADER
+            : meta.assetKey
+              ? `() => readI18nAsset(${genString(meta.assetKey)})`
+              : `() => Promise.resolve(${identifier})`,
         })
       }
       localeLoaders[locale.code]!.push(importMapper.get(meta.path)!)
@@ -65,12 +92,13 @@ export function generateLoaderOptions(
     const config = ctx.vueI18nConfigPaths[i]!
     const identifier = `config_${genSafeVariableName(basename(config.path))}_${config.hash}`
     const key = genString(identifier)
+    const virtualId = asI18nVirtual(config.hash)
 
-    importStatements.add(genImport(asI18nVirtual(config.hash), identifier))
+    importStatements.add(genImport(virtualId, identifier))
     vueI18nConfigs.push({
-      importer: genDynamicImport(asI18nVirtual(config.hash), { comment: `webpackChunkName: ${key}` }),
+      importer: genDynamicImport(virtualId, { comment: `webpackChunkName: ${key}` }),
       importerServer: `() => Promise.resolve(${identifier})`,
-      relative: relative(nuxt.options.buildDir, config.path),
+      virtualId,
     })
   }
 
@@ -90,16 +118,36 @@ export function generateLoaderOptions(
  *
  * Types like RouteMapGeneric, RouteRecordInfoGeneric, RouteLocationAsRelativeTypedList, etc.
  * are already provided by vue-router v5 and must not be redeclared.
+ *
+ * The import below is required: names used inside a module augmentation resolve against the
+ * file scope, not the augmented module, and `skipLibCheck` silently turns unresolved
+ * references into `any` — disabling narrowing entirely (#3962).
  */
 const typedRouterAugmentations = `
+import type {
+  TypesConfig,
+  RouteMapGeneric,
+  RouteLocationAsRelativeGeneric,
+  RouteLocationAsPathGeneric,
+  RouteLocationAsRelativeTypedList,
+  RouteLocationAsStringTypedList,
+  RouteLocationAsPathTypedList,
+  RouteLocationResolvedGeneric,
+  RouteLocationResolvedTypedList,
+  RouteLocationNormalizedLoadedGeneric,
+} from 'vue-router'
+
 declare module 'vue-router' {
   export type RouteMapI18n =
     TypesConfig extends Record<'RouteNamedMapI18n', infer RouteNamedMap> ? RouteNamedMap : RouteMapGeneric
 
   // Prefer named resolution for i18n
+  // The relative form indexes \`RouteLocationAsRelativeTypedList\` directly instead of using the
+  // \`RouteLocationAsRelativeI18n\` conditional alias so name/params narrowing works (#3962).
   export type RouteLocationNamedI18n<Name extends keyof RouteMapI18n = keyof RouteMapI18n> =
       | Name
-      | Omit<RouteLocationAsRelativeI18n, 'path'> & { path?: string }
+      | RouteLocationAsRelativeTypedList<RouteMapI18n>[Name]
+      | RouteLocationAsPathGeneric
       /**
        * Note: disabled route path string autocompletion, this can break depending on \`strategy\`
        * this can be enabled again after route resolve has been improved.
@@ -111,7 +159,9 @@ declare module 'vue-router' {
     RouteMapGeneric extends RouteMapI18n
       ? RouteLocationAsStringI18n | RouteLocationAsRelativeGeneric | RouteLocationAsPathGeneric
       :
-          | _LiteralUnion<RouteLocationAsStringTypedList<RouteMapI18n>[Name], string>
+          // \`| (string & {})\` keeps autocompletion while allowing any string, the
+          // helper type vue-router v4 exported for this no longer exists in v5
+          | RouteLocationAsStringTypedList<RouteMapI18n>[Name] | (string & {})
           | RouteLocationAsRelativeTypedList<RouteMapI18n>[Name]
 
   export type RouteLocationResolvedI18n<Name extends keyof RouteMapI18n = keyof RouteMapI18n> =
@@ -137,7 +187,7 @@ declare module 'vue-router' {
   export type RouteLocationAsStringI18n<Name extends keyof RouteMapI18n = keyof RouteMapI18n> =
     RouteMapGeneric extends RouteMapI18n
       ? string
-      : _LiteralUnion<RouteLocationAsStringTypedList<RouteMapI18n>[Name], string>
+      : RouteLocationAsStringTypedList<RouteMapI18n>[Name] | (string & {})
 
   export type RouteLocationAsRelativeI18n<Name extends keyof RouteMapI18n = keyof RouteMapI18n> =
     RouteMapGeneric extends RouteMapI18n
@@ -159,8 +209,8 @@ declare module 'vue-router' {
   }
 }`
 
-export function generateI18nTypes(nuxt: Nuxt, ctx: I18nNuxtContext) {
-  const legacyTypes = ctx.userOptions.types === 'legacy'
+export function generateI18nTypes(nuxt: Nuxt, ctx: ResolvedI18nContext) {
+  const legacyTypes = ctx.options.types === 'legacy'
   const i18nType = legacyTypes ? 'VueI18n' : 'Composer'
   const generatedLocales = simplifyLocaleOptions(ctx, nuxt)
   const resolvedLocaleType = isString(generatedLocales.at(0)) ? 'Locale[]' : 'LocaleObject[]'
@@ -220,7 +270,7 @@ declare module 'vue-router' {
 
 ${typedRouterAugmentations}
 
-${(ctx.userOptions.autoDeclare && globalTranslationTypes) || ''}
+${(ctx.options.autoDeclare && globalTranslationTypes) || ''}
 
 export {}`
 }

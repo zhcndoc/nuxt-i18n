@@ -1,13 +1,23 @@
 import { test, expect, describe } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { setup, url, $fetch } from '../utils'
+import { setup, url, $fetch, useTestContext } from '../utils'
 import { renderPage, getDom, waitForLocaleNetwork, getLocalesMessageKeyCount } from '../helper'
 import { Page } from 'playwright-core'
 
 describe('basic lazy loading', async () => {
   await setup({
     rootDir: fileURLToPath(new URL(`../fixtures/lazy`, import.meta.url)),
-    browser: true
+    browser: true,
+    // pins the opt-out, `optimize_message_bundling.spec.ts` covers the default on the same fixture
+    nuxtConfig: {
+      i18n: {
+        experimental: {
+          optimizeMessageBundling: false
+        }
+      }
+    }
   })
 
   test('dynamic locale files are not cached', async () => {
@@ -18,7 +28,7 @@ describe('basic lazy loading', async () => {
 
     await page.click('#nuxt-locale-link-fr')
     await page.waitForURL(url('/fr'))
-    expect(await page.locator('#dynamic-time').innerText()).toEqual('Not dynamic')
+    await expect.poll(() => page.locator('#dynamic-time').innerText()).toEqual('Not dynamic')
 
     // dynamicTime depends on passage of some time
     await page.waitForTimeout(1)
@@ -26,7 +36,7 @@ describe('basic lazy loading', async () => {
     // dynamicTime does not match captured dynamicTime
     await page.click('#nuxt-locale-link-nl')
     await page.waitForURL(url('/nl'))
-    expect(await page.locator('#dynamic-time').innerText()).to.not.equal(dynamicTime)
+    await expect.poll(() => page.locator('#dynamic-time').innerText()).to.not.equal(dynamicTime)
   })
 
   test('(#3773) messages are loaded once on page load', async () => {
@@ -39,88 +49,74 @@ describe('basic lazy loading', async () => {
     const { page } = await renderPage(home)
 
     // `en` present on initial load
-    expect(await getLocalesMessageKeyCount(page)).toMatchInlineSnapshot(`
-      {
-        "en": 7,
-      }
-    `)
+    await expect.poll(() => getLocalesMessageKeyCount(page)).toEqual({ en: 8 })
 
     // navigate and wait for locale file request
     await Promise.all([waitForLocaleNetwork(page, 'fr', 'response'), page.click('#nuxt-locale-link-fr')])
 
-    // `fr` locale has been fetched
-    expect(await getLocalesMessageKeyCount(page)).toMatchInlineSnapshot(`
-      {
-        "en": 7,
-        "fr": 5,
-      }
-    `)
+    // `fr` locale has been fetched. Polled rather than read once: the network wait resolves when the
+    // response arrives, the messages are only installed once the client has merged it
+    await expect.poll(() => getLocalesMessageKeyCount(page)).toEqual({ en: 8, fr: 5 })
 
     // navigate and wait for locale file request
     await Promise.all([waitForLocaleNetwork(page, 'nl', 'response'), page.click('#nuxt-locale-link-nl')])
 
     // `nl` (module) locale has been fetched
-    expect(await getLocalesMessageKeyCount(page)).toMatchInlineSnapshot(`
-      {
-        "en": 7,
-        "fr": 5,
-        "nl": 3,
-      }
-    `)
+    await expect.poll(() => getLocalesMessageKeyCount(page)).toEqual({ en: 8, fr: 5, nl: 3 })
   })
 
   test('can access to no prefix locale (en): /', async () => {
     const { page } = await renderPage('/')
 
     // `en` rendering
-    expect(await page.locator('#home-header').innerText()).toEqual('Homepage')
-    expect(await page.locator('title').innerText()).toEqual('Homepage')
-    expect(await page.locator('#link-about').innerText()).toEqual('About us')
+    await expect.poll(() => page.locator('#home-header').innerText()).toEqual('Homepage')
+    await expect.poll(() => page.locator('title').innerText()).toEqual('Homepage')
+    await expect.poll(() => page.locator('#link-about').innerText()).toEqual('About us')
 
     // lang switcher rendering
-    expect(await page.locator('#set-locale-link-fr').innerText()).toEqual('Français')
+    await expect.poll(() => page.locator('#set-locale-link-fr').innerText()).toEqual('Français')
 
     // page path
-    expect(JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/about' })
+    await expect.poll(async () => JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/about' })
 
     // current locale
-    expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('en')
+    await expect.poll(() => page.locator('#lang-switcher-current-locale code').innerText()).toEqual('en')
 
     // html tag `lang` attribute with language code
-    expect(await page.getAttribute('html', 'lang')).toEqual('en-US')
+    await expect.poll(() => page.getAttribute('html', 'lang')).toEqual('en-US')
   })
 
   test('can access to prefix locale: /fr', async () => {
     const { page } = await renderPage('/fr')
 
     // `fr` rendering
-    expect(await page.locator('#home-header').innerText()).toEqual('Accueil')
-    expect(await page.locator('title').innerText()).toEqual('Accueil')
-    expect(await page.locator('#link-about').innerText()).toEqual('À propos')
+    await expect.poll(() => page.locator('#home-header').innerText()).toEqual('Accueil')
+    await expect.poll(() => page.locator('title').innerText()).toEqual('Accueil')
+    await expect.poll(() => page.locator('#link-about').innerText()).toEqual('À propos')
 
     // lang switcher rendering
-    expect(await page.locator('#set-locale-link-en').innerText()).toEqual('English')
+    await expect.poll(() => page.locator('#set-locale-link-en').innerText()).toEqual('English')
 
     // page path
-    expect(JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/fr/about' })
+    await expect.poll(async () => JSON.parse(await page.locator('#home-use-async-data').innerText())).toMatchObject({ aboutPath: '/fr/about' })
 
     // current locale
-    expect(await page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
+    await expect.poll(() => page.locator('#lang-switcher-current-locale code').innerText()).toEqual('fr')
 
     // html tag `lang` attribute with language code
-    expect(await page.getAttribute('html', 'lang')).toEqual('fr-FR')
+    await expect.poll(() => page.getAttribute('html', 'lang')).toEqual('fr-FR')
   })
 
   test('multiple lazy loading', async () => {
     const { page } = await renderPage('/en-GB')
 
     // `en` base rendering
-    expect(await page.locator('#home-header').innerText()).toEqual('Homepage')
-    expect(await page.locator('title').innerText()).toEqual('Homepage')
-    expect(await page.locator('#link-about').innerText()).toEqual('About us')
+    await expect.poll(() => page.locator('#home-header').innerText()).toEqual('Homepage')
+    await expect.poll(() => page.locator('title').innerText()).toEqual('Homepage')
+    await expect.poll(() => page.locator('#link-about').innerText()).toEqual('About us')
 
-    expect(await page.locator('#profile-js').innerText()).toEqual('Profile1')
-    expect(await page.locator('#profile-ts').innerText()).toEqual('Profile2')
+    await expect.poll(() => page.locator('#profile-js').innerText()).toEqual('Profile1')
+    await expect.poll(() => page.locator('#profile-ts').innerText()).toEqual('Profile2')
   })
 
   test('files with cache disabled bypass caching', async () => {
@@ -141,24 +137,43 @@ describe('basic lazy loading', async () => {
   test('manually loaded messages can be used in translations', async () => {
     const { page } = await renderPage('/manual-load')
 
-    expect(await page.locator('#welcome-english').innerText()).toEqual('Welcome!')
-    expect(await page.locator('#welcome-dutch').innerText()).toEqual('Welkom!')
+    await expect.poll(() => page.locator('#welcome-english').innerText()).toEqual('Welcome!')
+    await expect.poll(() => page.locator('#welcome-dutch').innerText()).toEqual('Welkom!')
   })
 
   test('(#3359) runtime config accessible in locale function', async () => {
     const { page } = await renderPage('/')
 
     // check initial text value before translation has been loaded
-    expect(await page.locator('#runtime-config-key').textContent()).toEqual('runtimeConfigKey')
+    await expect.poll(() => page.locator('#runtime-config-key').textContent()).toEqual('runtimeConfigKey')
 
     await Promise.all([waitForLocaleNetwork(page, 'en-GB', 'response'), page.click('#nuxt-locale-link-en-GB')])
 
     // check text value after translation has been loaded
-    expect(await page.locator('#runtime-config-key').textContent()).toEqual('runtime-config-value')
+    await expect.poll(() => page.locator('#runtime-config-key').textContent()).toEqual('runtime-config-value')
 
     // trigger server-side locale loading
     const html = await $fetch('/en-GB')
     const runtimeText = await (await getDom(html)).locator('#runtime-config-key')!.textContent()!
     expect(runtimeText).toEqual('runtime-config-value')
+  })
+
+  describe('client locale chunks stripped in endpoint mode', () => {
+    test('client assets contain no bundled locale messages', async () => {
+      // ssr builds always load messages from the endpoint, so client locale chunks are not emitted
+      const assetsDir = join(useTestContext().nuxt!.options.nitro.output!.dir!, 'public/_nuxt')
+      const chunks = readdirSync(assetsDir).filter(x => x.endsWith('.js'))
+      expect(chunks.length).toBeGreaterThan(0)
+      for (const chunk of chunks) {
+        expect(readFileSync(join(assetsDir, chunk), 'utf8')).not.toContain('Homepage')
+      }
+    })
+
+    test('client-side locale switch fetches messages from the endpoint', async () => {
+      const { page } = await renderPage('/')
+
+      await Promise.all([waitForLocaleNetwork(page, 'fr', 'response'), page.click('#nuxt-locale-link-fr')])
+      await expect.poll(() => page.locator('#home-header').innerText()).toEqual('Accueil')
+    })
   })
 })

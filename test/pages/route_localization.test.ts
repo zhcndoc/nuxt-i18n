@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { localizeRoutes } from '../../src/routing'
+import { createRouteResourcesCollector, localizeRoutes } from '../../src/routing'
 import { localizeSingleRoute, createRouteContext, canCompactRoute } from '../../src/kit/gen'
-import { buildPathToConfig, collectCompactPrerenderRoutes, NuxtPageAnalyzeContext } from '../../src/pages'
+import { collectCompactPrerenderRoutes, createPureOptionsResolver, NuxtPageAnalyzeContext } from '../../src/pages'
 import { createMockOptionsResolver, createTestConfig, getNormalizedLocales } from './utils'
 
 import type { LocalizableRoute, LocalizeRouteParams } from '../../src/kit/gen'
@@ -284,26 +284,6 @@ describe('localizeRoutes strategies', () => {
       expect(findRoute(result, 'home___fr')?.path).toBe('/fr')
       expect(findRoute(result, 'about___fr')?.path).toBe('/fr/about')
     })
-
-    it('with includeUnprefixedFallback, default locale also gets unprefixed copy', () => {
-      const config = createTestConfig({
-        locales: ['en', 'fr'],
-        strategy: 'prefix',
-        defaultLocale: 'en',
-        includeUnprefixedFallback: true,
-      })
-      const result = localizeRoutes(routes, config)
-
-      // unprefixed fallback for default locale (original route without locale suffix)
-      const homeUnprefixed = result.find(r => r.name === 'home' && r.path === '/')
-      expect(homeUnprefixed).toBeDefined()
-      const aboutUnprefixed = result.find(r => r.name === 'about' && r.path === '/about')
-      expect(aboutUnprefixed).toBeDefined()
-
-      // prefixed routes still exist
-      expect(findRoute(result, 'home___en')?.path).toBe('/en')
-      expect(findRoute(result, 'home___fr')?.path).toBe('/fr')
-    })
   })
 
   describe('no_prefix', () => {
@@ -516,97 +496,194 @@ describe('localizeRoutes options', () => {
 })
 
 // ---------------------------------------------------------------------------
-// d) buildPathToConfig
+// d) createRouteResourcesCollector
 // ---------------------------------------------------------------------------
 
-describe('buildPathToConfig', () => {
-  function makeCtx(fileToPath: Record<string, string> = {}): NuxtPageAnalyzeContext {
-    const ctx = new NuxtPageAnalyzeContext({})
-    ctx.fileToPath = fileToPath
-    return ctx
+describe('createRouteResourcesCollector', () => {
+  function collectResources(routes: LocalizableRoute[], config: ReturnType<typeof createTestConfig>) {
+    const collector = createRouteResourcesCollector()
+    localizeRoutes(routes, { ...config, onLocalize: collector.collect })
+    return collector.toResources()
   }
 
-  it('marks all locales as true for a route with no custom paths', () => {
-    const ctx = makeCtx({ '/pages/about.vue': '/about' })
-    const resolver = createMockOptionsResolver({
-      about: { locales: ['en', 'fr'], paths: {} },
+  it('keeps a route with no custom paths implicit as a localized path', () => {
+    const resources = collectResources(
+      [{ path: '/about', name: 'about', file: '/pages/about.vue' }],
+      createTestConfig({ optionsResolver: createMockOptionsResolver() }),
+    )
+    expect(resources.localizedPaths).toEqual(['/about'])
+    expect(resources.pathToI18nConfig).toEqual({})
+    expect(resources.i18nPathToPath).toEqual({})
+    expect(resources.disabledPaths).toEqual([])
+  })
+
+  it('maps custom paths and inverts them, identity locales stay implicit', () => {
+    const resources = collectResources(
+      [{ path: '/about', name: 'about', file: '/pages/about.vue' }],
+      createTestConfig({
+        optionsResolver: createMockOptionsResolver({
+          about: { locales: ['en', 'fr'], paths: { fr: '/a-propos' } },
+        }),
+      }),
+    )
+    expect(resources.localizedPaths).toEqual(['/about'])
+    expect(resources.pathToI18nConfig['/about']).toEqual({ fr: '/a-propos' })
+    expect(resources.i18nPathToPath).toEqual({ '/a-propos': '/about' })
+  })
+
+  it('drops the plain path when all locales use custom paths', () => {
+    const resources = collectResources(
+      [{ path: '/history', name: 'history', file: '/pages/history.vue' }],
+      createTestConfig({
+        optionsResolver: createMockOptionsResolver({
+          history: { locales: ['en', 'fr'], paths: { en: '/our-history', fr: '/notre-histoire' } },
+        }),
+      }),
+    )
+    expect(resources.localizedPaths).toEqual([])
+    expect(resources.pathToI18nConfig['/history']).toEqual({ en: '/our-history', fr: '/notre-histoire' })
+    expect(resources.i18nPathToPath).toEqual({ '/our-history': '/history', '/notre-histoire': '/history' })
+  })
+
+  it('marks locales without route options as false', () => {
+    const resources = collectResources(
+      [{ path: '/about', name: 'about', file: '/pages/about.vue' }],
+      createTestConfig({
+        optionsResolver: createMockOptionsResolver({
+          about: { locales: ['en'], paths: {} },
+        }),
+      }),
+    )
+    expect(resources.localizedPaths).toEqual(['/about'])
+    expect(resources.pathToI18nConfig['/about']).toEqual({ fr: false })
+    expect(resources.disabledPaths).toEqual([])
+  })
+
+  it('records routes with disabled localization', () => {
+    const resources = collectResources(
+      [{ path: '/secret', name: 'secret', file: '/pages/secret.vue', meta: { i18n: false } }],
+      createTestConfig({ optionsResolver: createMockOptionsResolver({ secret: false }) }),
+    )
+    expect(resources.localizedPaths).toEqual([])
+    expect(resources.pathToI18nConfig).toEqual({})
+    expect(resources.disabledPaths).toEqual(['/secret'])
+  })
+
+  it('skips redirect-only routes without a file', () => {
+    const resources = collectResources(
+      [{ path: '/old', name: 'old', redirect: '/new' }],
+      createTestConfig({ optionsResolver: createMockOptionsResolver() }),
+    )
+    expect(resources.localizedPaths).toEqual([])
+    expect(resources.disabledPaths).toEqual([])
+  })
+
+  it('keys nested children by their full route path', () => {
+    const resources = collectResources(
+      [
+        {
+          path: '/account',
+          name: 'account',
+          file: '/pages/account.vue',
+          children: [{ path: 'profile', name: 'account-profile', file: '/pages/account/profile.vue' }],
+        },
+      ],
+      createTestConfig({ optionsResolver: createMockOptionsResolver() }),
+    )
+    expect(resources.localizedPaths).toEqual(['/account', '/account/profile'])
+    expect(resources.pathToI18nConfig).toEqual({})
+  })
+
+  it('composes child paths under a custom parent path', () => {
+    const resources = collectResources(
+      [
+        {
+          path: '/account',
+          name: 'account',
+          file: '/pages/account.vue',
+          children: [{ path: 'profile', name: 'account-profile', file: '/pages/account/profile.vue' }],
+        },
+      ],
+      createTestConfig({
+        optionsResolver: createMockOptionsResolver({
+          account: { locales: ['en', 'fr'], paths: { fr: '/compte' } },
+        }),
+      }),
+    )
+    expect(resources.pathToI18nConfig['/account/profile']).toEqual({ fr: '/compte/profile' })
+    expect(resources.i18nPathToPath['/compte/profile']).toBe('/account/profile')
+  })
+
+  it('reports children of compacted routes', () => {
+    const resources = collectResources(
+      [
+        {
+          path: '/account',
+          name: 'account',
+          file: '/pages/account.vue',
+          children: [{ path: 'profile', name: 'account-profile', file: '/pages/account/profile.vue' }],
+        },
+      ],
+      createTestConfig({ strategy: 'prefix', compactRoutes: true, optionsResolver: createMockOptionsResolver() }),
+    )
+    expect(resources.localizedPaths).toEqual(['/account', '/account/profile'])
+  })
+
+  it('collects nothing when routes are not localized', () => {
+    const resources = collectResources(
+      [{ path: '/about', name: 'about', file: '/pages/about.vue' }],
+      createTestConfig({ strategy: 'no_prefix', optionsResolver: createMockOptionsResolver() }),
+    )
+    expect(resources.localizedPaths).toEqual([])
+    expect(resources.pathToI18nConfig).toEqual({})
+  })
+})
+
+// nuxt injects stub pages for `routeRules` redirects, the rules only match unprefixed paths (#3606)
+describe.each([false, true])('routeRules redirect stubs (compactRoutes: %s)', (compactRoutes) => {
+  const stubFile = '/app/node_modules/nuxt/dist/pages/runtime/component-stub'
+
+  function makeConfig(resolver: ReturnType<typeof createPureOptionsResolver>) {
+    return createTestConfig({
+      locales: ['en', 'fr'],
+      strategy: 'prefix_except_default',
+      defaultLocale: 'en',
+      optionsResolver: resolver,
+      compactRoutes,
     })
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      { path: '/about', name: 'about', file: '/pages/about.vue' },
-    ])
-    expect(ctx.pathToConfig['/about']).toEqual({ en: true, fr: true })
+  }
+
+  it('passes stubs through unlocalized and keeps them out of route resources', () => {
+    const resolver = createPureOptionsResolver(new NuxtPageAnalyzeContext({}), 'en', 'config', stubFile)
+    const collector = createRouteResourcesCollector()
+    const result = localizeRoutes(
+      [
+        { path: '/about', name: 'about', file: '/pages/about.vue' },
+        { _sync: true, path: '/old-path', file: `${stubFile}.js` },
+      ],
+      { ...makeConfig(resolver), onLocalize: collector.collect },
+    )
+
+    const stubs = result.filter(r => r.path.includes('old-path'))
+    expect(stubs).toHaveLength(1)
+    expect(stubs[0]!.path).toBe('/old-path')
+    expect(result.find(r => r.path === (compactRoutes ? '/:locale(fr)/about' : '/fr/about'))).toBeDefined()
+
+    const resources = collector.toResources()
+    expect(resources.localizedPaths).not.toContain('/old-path')
+    expect(resources.disabledPaths).not.toContain('/old-path')
   })
 
-  it('stores srcPath string for locale with a custom path', () => {
-    const ctx = makeCtx({ '/pages/about.vue': '/about' })
-    const resolver = createMockOptionsResolver({
-      about: { locales: ['en', 'fr'], paths: { fr: '/a-propos' }, srcPaths: { fr: '/a-propos' } },
-    })
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      { path: '/about', name: 'about', file: '/pages/about.vue' },
-    ])
-    expect(ctx.pathToConfig['/about']).toEqual({ en: true, fr: '/a-propos' })
-  })
-
-  it('marks all locales as false when resolver returns undefined (disabled route)', () => {
-    const ctx = makeCtx({ '/pages/secret.vue': '/secret' })
-    const resolver = createMockOptionsResolver({ secret: false })
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      { path: '/secret', name: 'secret', file: '/pages/secret.vue' },
-    ])
-    expect(ctx.pathToConfig['/secret']).toEqual({ en: false, fr: false })
-  })
-
-  it('skips routes without a file', () => {
-    const ctx = makeCtx({})
-    const resolver = createMockOptionsResolver()
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      { path: '/about', name: 'about' },
-    ])
-    expect(Object.keys(ctx.pathToConfig)).toHaveLength(0)
-  })
-
-  it('skips routes whose file is not in fileToPath', () => {
-    const ctx = makeCtx({})
-    const resolver = createMockOptionsResolver()
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      { path: '/about', name: 'about', file: '/pages/about.vue' },
-    ])
-    expect(Object.keys(ctx.pathToConfig)).toHaveLength(0)
-  })
-
-  it('recurses into children routes', () => {
-    const ctx = makeCtx({
-      '/pages/account.vue': '/account',
-      '/pages/account/profile.vue': '/account/profile',
-    })
-    const resolver = createMockOptionsResolver()
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      {
-        path: '/account',
-        name: 'account',
-        file: '/pages/account.vue',
-        children: [
-          { path: 'profile', name: 'account-profile', file: '/pages/account/profile.vue' },
-        ],
-      },
-    ])
-    expect(ctx.pathToConfig['/account']).toEqual({ en: true, fr: true })
-    expect(ctx.pathToConfig['/account/profile']).toEqual({ en: true, fr: true })
-  })
-
-  it('processes multiple top-level routes', () => {
-    const ctx = makeCtx({
-      '/pages/home.vue': '/',
-      '/pages/about.vue': '/about',
-    })
-    const resolver = createMockOptionsResolver()
-    buildPathToConfig(ctx, ['en', 'fr'], resolver, [
-      { path: '/', name: 'home', file: '/pages/home.vue' },
-      { path: '/about', name: 'about', file: '/pages/about.vue' },
-    ])
-    expect(ctx.pathToConfig['/']).toEqual({ en: true, fr: true })
-    expect(ctx.pathToConfig['/about']).toEqual({ en: true, fr: true })
+  it('does not skip a project page named component-stub', () => {
+    const resolver = createPureOptionsResolver(new NuxtPageAnalyzeContext({}), 'en', 'config', stubFile)
+    const result = localizeRoutes(
+      [{ path: '/runtime/component-stub', name: 'stub-page', file: '/pages/runtime/component-stub.vue' }],
+      makeConfig(resolver),
+    )
+    expect(result.find(r => r.name === 'stub-page___en')).toBeDefined()
+    expect(
+      result.find(r => r.path === (compactRoutes ? '/:locale(fr)/runtime/component-stub' : '/fr/runtime/component-stub')),
+    ).toBeDefined()
   })
 })
 
@@ -700,55 +777,6 @@ describe('compact routes', () => {
       // no per-locale routes
       expect(findRoute(result, 'about___en')).toBeUndefined()
       expect(findRoute(result, 'about___fr')).toBeUndefined()
-    })
-  })
-
-  // The Nuxt module wrapper passes `includeUnprefixedFallback: true` for any
-  // strategy other than `prefix`, even though the flag is only consulted when
-  // strategy === 'prefix'. The compactRoutes gate must not treat that as a
-  // disable signal — see issue #3971.
-  describe('compactRoutes is not blocked by includeUnprefixedFallback for non-prefix strategies', () => {
-    it('compacts under prefix_except_default + includeUnprefixedFallback: true', () => {
-      const config = createTestConfig({
-        locales,
-        strategy: 'prefix_except_default',
-        defaultLocale: 'en',
-        compactRoutes: true,
-        includeUnprefixedFallback: true,
-      })
-      const result = localizeRoutes(routes, config)
-
-      expect(result.find(r => r.path === '/:locale(fr|ja)/about')).toBeDefined()
-      expect(findRoute(result, 'about___fr')).toBeUndefined()
-      expect(findRoute(result, 'about___ja')).toBeUndefined()
-    })
-
-    it('compacts under prefix_and_default + includeUnprefixedFallback: true', () => {
-      const config = createTestConfig({
-        locales,
-        strategy: 'prefix_and_default',
-        defaultLocale: 'en',
-        compactRoutes: true,
-        includeUnprefixedFallback: true,
-      })
-      const result = localizeRoutes(routes, config)
-
-      expect(result.find(r => r.path === '/:locale(en|fr|ja)/about')).toBeDefined()
-      expect(findRoute(result, 'about___fr')).toBeUndefined()
-      expect(findRoute(result, 'about___ja')).toBeUndefined()
-    })
-
-    it('still blocks compaction under prefix + includeUnprefixedFallback: true', () => {
-      const config = createTestConfig({
-        locales,
-        strategy: 'prefix',
-        defaultLocale: 'en',
-        compactRoutes: true,
-        includeUnprefixedFallback: true,
-      })
-      const result = localizeRoutes(routes, config)
-
-      expect(result.find(r => r.path?.includes(':locale'))).toBeUndefined()
     })
   })
 
